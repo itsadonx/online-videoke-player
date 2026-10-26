@@ -1,20 +1,10 @@
-/** Copy to config.js and add keys. Enable YouTube Data API v3 in Google Cloud Console. */
+/** Copy to config.js to set defaults. Enable YouTube Data API v3 and Google Drive API. */
 
 window.OVP_CONFIG = {
-
-  /** Optional default key if none saved in Config tab yet */
-
-  youtubeApiKey: "YOUR_YOUTUBE_DATA_API_KEY_HERE",
-
-  /** Or list several keys (same failover as Config tab when copied to config.js) */
-
+  youtubeApiKey: "AIzaSyCfvx8qgQOYGfzq_2D17lSClyE1_zAwxwg",
+  driveApiKey: "AIzaSyCfvx8qgQOYGfzq_2D17lSClyE1_zAwxwg",
+  gdriveFolderUrl: "https://drive.google.com/drive/folders/1ls4DoicngDQFNvBFFdw3fDeNu2_1W62L?usp=drive_link",
   youtubeApiKeys: [
-
-    // { label: "Project A", key: "AIza..." },
-
-    // { label: "Project B", key: "AIza..." },
-
+    { label: "Default Drive / YouTube", key: "AIzaSyCfvx8qgQOYGfzq_2D17lSClyE1_zAwxwg" },
   ],
-
 };
-

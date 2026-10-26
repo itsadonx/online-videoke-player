@@ -289,6 +289,33 @@ body {
   overflow-y: auto;
 }
 
+.remote-drive-list {
+  max-height: min(55vh, 480px);
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.35rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.source-badge-youtube {
+  color: #0b0b0b;
+  background: #ff4d6d;
+}
+
+.source-badge-drive {
+  color: #e8f1ff;
+  background: #3b82f6;
+}
+
 .remote-result-btn {
   display: flex;
   align-items: center;

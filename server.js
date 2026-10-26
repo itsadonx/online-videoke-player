@@ -1,4 +1,5 @@
 const path = require("path");
+const { Readable } = require("stream");
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -32,6 +33,48 @@ function normalizeRoomId(id) {
 function getRoom(roomId) {
   return rooms.get(normalizeRoomId(roomId));
 }
+
+app.get("/ovp-drive/:fileId", async (req, res) => {
+  const fileId = String(req.params.fileId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const key = String(req.query.key || "").trim();
+  if (!fileId || !key) {
+    res.status(400).send("Missing Drive file or API key");
+    return;
+  }
+
+  const params = new URLSearchParams({
+    alt: "media",
+    key,
+    supportsAllDrives: "true",
+  });
+  const headers = {};
+  if (req.headers.range) headers.Range = req.headers.range;
+
+  try {
+    const ac = new AbortController();
+    req.on("close", () => ac.abort());
+    const upstream = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params}`,
+      { headers, redirect: "follow", signal: ac.signal }
+    );
+
+    res.status(upstream.status);
+    ["content-type", "content-length", "content-range", "accept-ranges"].forEach((name) => {
+      const value = upstream.headers.get(name);
+      if (value) res.setHeader(name, value);
+    });
+    if (!res.getHeader("Accept-Ranges")) res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "no-store");
+
+    if (!upstream.body) {
+      res.end();
+      return;
+    }
+    Readable.fromWeb(upstream.body).pipe(res);
+  } catch {
+    if (!res.headersSent) res.status(502).send("Could not stream Google Drive video");
+  }
+});
 
 app.use(express.static(path.join(__dirname)));
 
@@ -94,11 +137,6 @@ io.on("connection", (socket) => {
   socket.on("host:search-results", (payload) => {
     if (socket.data.role !== "host" || !socket.data.roomId) return;
     io.to(socket.data.roomId).emit("player:search-results", payload || { items: [] });
-  });
-
-  socket.on("host:catalog", (payload) => {
-    if (socket.data.role !== "host" || !socket.data.roomId) return;
-    io.to(socket.data.roomId).emit("player:catalog", payload || { items: [] });
   });
 
   socket.on("disconnect", () => {

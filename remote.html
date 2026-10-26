@@ -80,9 +80,9 @@
       <label class="remote-label" for="volume">Volume</label>
       <input type="range" class="remote-volume" id="volume" min="0" max="1" step="0.05" value="0.85" />
 
-      <h2 class="remote-section-title">Karaoke library</h2>
-      <p class="remote-catalog-status" id="catalog-status"></p>
-      <ul class="remote-results remote-catalog" id="remote-catalog"></ul>
+      <h2 class="remote-section-title">Drive library</h2>
+      <p class="remote-empty" id="drive-empty">No Google Drive folder on the player yet.</p>
+      <ul class="remote-results remote-drive-list" id="drive-list"></ul>
 
       <h2 class="remote-section-title">Search</h2>
       <p class="remote-search-hint" id="search-hint" role="status"></p>
@@ -99,6 +99,10 @@
       <p class="remote-message hidden" id="search-message"></p>
       <ul class="remote-results" id="search-results"></ul>
 
+      <h2 class="remote-section-title">History</h2>
+      <p class="remote-empty" id="history-empty">No recently played songs yet.</p>
+      <ul class="remote-results" id="history-list"></ul>
+
       <div class="remote-queue-head">
         <h2 class="remote-label">Up next</h2>
         <button type="button" class="remote-text-btn" id="btn-clear-queue">Clear</button>
@@ -109,7 +113,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="karaoke-catalog.js"></script>
   <script src="remote.js"></script>
 </body>
 </html>

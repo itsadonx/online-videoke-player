@@ -70,6 +70,11 @@
             await ovp.playOrQueueYoutube(payload.videoId, payload.title || "YouTube video");
           }
           break;
+        case "play-gdrive":
+          if (payload.fileId && ovp.playOrQueueGdrive) {
+            await ovp.playOrQueueGdrive(payload.fileId, payload.title || "Google Drive video");
+          }
+          break;
         case "search": {
           const query = String(payload?.query || "").trim();
           if (!query) {
@@ -87,8 +92,11 @@
             break;
           }
           const keyInfo = ovp.getState?.()?.apiKeys;
-          const needsKey = !window.OVPYouTube?.parseVideoId?.(query);
-          if (needsKey && keyInfo && !keyInfo.canSearch) {
+          const isDirectLink = !!(
+            window.OVPYouTube?.parseVideoId?.(query) || window.OVPDrive?.parseFileId?.(query)
+          );
+          const hasDriveLibrary = (ovp.getState?.()?.driveLibrary || []).length > 0;
+          if (!isDirectLink && !hasDriveLibrary && keyInfo && !keyInfo.canSearch) {
             const msg =
               keyInfo.total === 0
                 ? "No API keys on the player. Open Settings → Config on the TV/PC (not on the phone) and add keys."
@@ -113,25 +121,6 @@
           break;
         case "remove-queue":
           if (typeof payload.index === "number") ovp.removeQueueAt(payload.index);
-          break;
-        case "catalog-pick":
-          if (ovp.pickCatalogEntry) {
-            await ovp.pickCatalogEntry({
-              title: payload.title,
-              search: payload.search,
-              videoId: payload.videoId,
-            });
-          }
-          break;
-        case "catalog-request":
-          if (ovp.getCatalogBrowse) {
-            try {
-              const items = await ovp.getCatalogBrowse();
-              socket.emit("host:catalog", { items, static: true });
-            } catch (err) {
-              socket.emit("host:catalog", { items: [], error: err.message || "Catalog load failed." });
-            }
-          }
           break;
         default:
           break;

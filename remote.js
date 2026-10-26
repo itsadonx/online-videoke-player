@@ -23,11 +23,13 @@
   const searchHint = document.getElementById("search-hint");
   const searchMessage = document.getElementById("search-message");
   const searchResults = document.getElementById("search-results");
-  const remoteCatalog = document.getElementById("remote-catalog");
-  const catalogStatus = document.getElementById("catalog-status");
   const queueList = document.getElementById("queue-list");
   const queueEmpty = document.getElementById("queue-empty");
   const btnClearQueue = document.getElementById("btn-clear-queue");
+  const historyList = document.getElementById("history-list");
+  const historyEmpty = document.getElementById("history-empty");
+  const driveList = document.getElementById("drive-list");
+  const driveEmpty = document.getElementById("drive-empty");
 
   const iconPlay = btnPlay.querySelector(".icon-play");
   const iconPause = btnPlay.querySelector(".icon-pause");
@@ -81,7 +83,14 @@
     updateSearchHint(state);
     nowTitle.textContent = state.nowPlaying || "—";
     const playing = state.isPlaying ? "Playing" : "Paused";
-    const mode = state.playbackMode === "youtube" ? "YouTube" : state.playbackMode === "file" ? "Local file" : "Idle";
+    const mode =
+      state.playbackMode === "youtube"
+        ? "YouTube"
+        : state.playbackMode === "gdrive" || state.playbackMode === "gdrive-embed"
+          ? "Google Drive"
+          : state.playbackMode === "file"
+            ? "Local file"
+            : "Idle";
     const remotes = typeof state.remoteCount === "number" ? state.remoteCount : "?";
     nowMeta.textContent = `${playing} · ${mode} · ${remotes} remote(s)`;
 
@@ -120,6 +129,50 @@
       li.append(title, remove);
       queueList.appendChild(li);
     });
+
+    const history = (state.history || []).filter((item) => item.videoId || item.fileId);
+    if (historyEmpty) historyEmpty.classList.toggle("hidden", history.length > 0);
+    if (historyList) {
+      renderResultList(
+        historyList,
+        history.map((item) => ({
+          id: item.fileId || item.videoId,
+          title: item.title,
+          type: item.type,
+          source: item.type === "gdrive" ? "gdrive" : "youtube",
+          channel: item.type === "gdrive" ? "Google Drive · tap to play" : "Tap to play or queue",
+          thumbnail:
+            item.type === "gdrive"
+              ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(item.fileId || item.videoId)}&sz=w320`
+              : `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`,
+        })),
+        playRemoteItem
+      );
+    }
+
+    const drive = state.driveLibrary || [];
+    if (driveEmpty) driveEmpty.classList.toggle("hidden", drive.length > 0);
+    if (driveList) {
+      renderResultList(
+        driveList,
+        drive.map((item) => ({
+          id: item.id,
+          title: item.title,
+          source: "gdrive",
+          channel: "Google Drive",
+          thumbnail: item.thumbnail,
+        })),
+        playRemoteItem
+      );
+    }
+  }
+
+  function playRemoteItem(item) {
+    if (item.source === "gdrive" || item.type === "gdrive") {
+      send("play-gdrive", { fileId: item.fileId || item.id, title: item.title });
+      return;
+    }
+    send("play-youtube", { videoId: item.id || item.videoId, title: item.title });
   }
 
   function renderResultList(container, items, onPick) {
@@ -144,7 +197,11 @@
       title.textContent = item.title;
       const channel = document.createElement("p");
       channel.className = "remote-result-channel";
-      channel.textContent = item.channel || "YouTube";
+      const source = item.source === "gdrive" || item.type === "gdrive" ? "drive" : "youtube";
+      const badge = document.createElement("span");
+      badge.className = `source-badge source-badge-${source}`;
+      badge.textContent = source === "drive" ? "Drive" : "YouTube";
+      channel.append(badge, document.createTextNode(item.channel || (source === "drive" ? "Google Drive" : "YouTube")));
       meta.append(title, channel);
       btn.appendChild(meta);
       btn.addEventListener("click", () => onPick(item));
@@ -162,53 +219,8 @@
     }
     searchMessage.classList.add("hidden");
     renderResultList(searchResults, items, (item) => {
-      send("play-youtube", { videoId: item.id, title: item.title });
+      playRemoteItem(item);
       searchResults.innerHTML = "";
-    });
-  }
-
-  function renderLocalCatalog() {
-    const catalog = window.OVP_KARAOKE_CATALOG || [];
-    if (catalogStatus) {
-      catalogStatus.textContent = `${catalog.length} picks — tap to search on the player (one API call each).`;
-    }
-    if (!remoteCatalog) return;
-    remoteCatalog.innerHTML = "";
-    catalog.forEach((entry) => {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "remote-result-btn";
-      if (entry.videoId) {
-        const img = document.createElement("img");
-        img.src = `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`;
-        img.alt = "";
-        btn.appendChild(img);
-      } else {
-        const ph = document.createElement("span");
-        ph.className = "karaoke-pick-placeholder";
-        ph.textContent = entry.title.charAt(0).toUpperCase();
-        btn.appendChild(ph);
-      }
-      const meta = document.createElement("div");
-      meta.className = "remote-result-meta";
-      const title = document.createElement("p");
-      title.className = "remote-result-title";
-      title.textContent = entry.title;
-      const channel = document.createElement("p");
-      channel.className = "remote-result-channel";
-      channel.textContent = entry.videoId ? "Karaoke pick" : "Tap to search on player";
-      meta.append(title, channel);
-      btn.appendChild(meta);
-      btn.addEventListener("click", () => {
-        send("catalog-pick", {
-          title: entry.title,
-          search: entry.search || `${entry.title} karaoke`,
-          videoId: entry.videoId || "",
-        });
-      });
-      li.appendChild(btn);
-      remoteCatalog.appendChild(li);
     });
   }
 
@@ -283,7 +295,6 @@
       sessionStorage.setItem(STORAGE_ROOM, roomId);
       history.replaceState(null, "", `${location.pathname}?room=${roomId}`);
       showMain();
-      renderLocalCatalog();
     });
   }
 

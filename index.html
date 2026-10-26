@@ -71,6 +71,18 @@
       <button
         type="button"
         class="settings-tab"
+        id="tab-history"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-history"
+        data-tab="history"
+      >
+        History
+        <span class="settings-tab-badge hidden" id="tab-badge-history"></span>
+      </button>
+      <button
+        type="button"
+        class="settings-tab"
         id="tab-config"
         role="tab"
         aria-selected="false"
@@ -92,12 +104,8 @@
       </div>
 
       <div class="settings-tabpanel hidden" id="panel-songs" role="tabpanel" aria-labelledby="tab-songs" hidden>
-        <h3 class="catalog-heading">Karaoke picks</h3>
-        <p class="catalog-lead">Tap a song to play or queue. Use search below for anything else.</p>
-        <p class="catalog-load-status" id="catalog-load-status">Open this tab to browse karaoke picks.</p>
-        <ul class="youtube-results karaoke-catalog" id="karaoke-catalog"></ul>
-
-        <h3 class="catalog-heading catalog-heading-search">Search</h3>
+        <h3 class="catalog-heading">Search</h3>
+        <p class="catalog-lead">Search karaoke, or paste a YouTube / Google Drive video link. Results are marked Drive or YouTube.</p>
         <form class="youtube-form" id="youtube-form">
           <div class="youtube-input-wrap">
             <svg class="youtube-form-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -107,7 +115,7 @@
               type="search"
               class="youtube-input"
               id="youtube-query"
-              placeholder="Search karaoke or paste YouTube link"
+              placeholder="Search, YouTube link, or Google Drive link"
               autocomplete="off"
             />
           </div>
@@ -119,6 +127,22 @@
         </p>
         <p class="youtube-message hidden" id="youtube-message" role="alert"></p>
         <ul class="youtube-results hidden" id="youtube-results"></ul>
+
+        <h3 class="catalog-heading catalog-heading-search">Google Drive library</h3>
+        <p class="catalog-lead" id="drive-library-lead">
+          All shared Drive karaoke videos load here automatically. Scroll and tap to play or queue.
+        </p>
+        <p class="catalog-load-status" id="drive-library-status">Loading Drive videos…</p>
+        <ul class="youtube-results drive-library-list" id="drive-library"></ul>
+      </div>
+
+      <div class="settings-tabpanel hidden" id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <div class="queue-header">
+          <p class="queue-intro">Recently played songs. Tap one to play or add it to the queue.</p>
+          <button type="button" class="queue-clear" id="btn-clear-history">Clear history</button>
+        </div>
+        <p class="queue-empty" id="history-empty">No recently played songs yet. Play something from Songs and it will show up here.</p>
+        <ul class="youtube-results history-list hidden" id="history-list"></ul>
       </div>
 
       <div class="settings-tabpanel hidden" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
@@ -160,6 +184,24 @@
           <p class="settings-status" id="api-key-status" role="status"></p>
         </section>
         <section class="settings-section">
+          <h3 class="settings-subheading">Google Drive videos</h3>
+          <p class="settings-hint">
+            Upload karaoke videos to a Google Drive folder. Share the folder (and each video) as
+            <strong>Anyone with the link → Viewer</strong>. Enable <strong>Google Drive API</strong> in the same
+            Google Cloud project as your YouTube API key.
+          </p>
+          <label class="settings-label" for="gdrive-folder-url">Drive folder link</label>
+          <input
+            type="url"
+            class="settings-input"
+            id="gdrive-folder-url"
+            autocomplete="off"
+            placeholder="https://drive.google.com/drive/folders/..."
+          />
+          <button type="button" class="settings-save-btn" id="btn-save-gdrive-folder">Save Drive folder</button>
+          <p class="settings-status" id="gdrive-folder-status" role="status"></p>
+        </section>
+        <section class="settings-section">
           <h3 class="settings-subheading">Phone remote</h3>
           <p class="settings-label">Room code</p>
           <p class="remote-room-display" id="remote-room-code">—</p>
@@ -183,6 +225,7 @@
         <div class="player-frame">
           <div class="video-wrap">
             <div id="youtube-player" class="youtube-player" hidden></div>
+            <div id="gdrive-player" class="gdrive-player" hidden></div>
 
             <video
               id="karaoke-video"
@@ -190,11 +233,7 @@
               playsinline
               poster=""
               preload="metadata"
-            >
-              <!-- Replace src with your karaoke MP4 when ready -->
-              <source src="" type="video/mp4" />
-              Your browser does not support HTML5 video.
-            </video>
+            ></video>
 
             <div class="video-placeholder" id="video-placeholder">
               <div class="placeholder-inner">
@@ -302,9 +341,11 @@
     </main>
   </div>
 
+  <script src="config.example.js"></script>
   <script src="config.js"></script>
   <script src="karaoke-catalog.js"></script>
   <script src="youtube.js"></script>
+  <script src="gdrive.js"></script>
   <script src="player.js"></script>
   <script src="host-sync.js"></script>
 </body>

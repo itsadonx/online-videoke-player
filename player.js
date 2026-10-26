@@ -2,6 +2,9 @@
   const STORAGE_KEYS = "ovp_youtube_api_keys";
   const STORAGE_KEY_LEGACY = "ovp_youtube_api_key";
   const STORAGE_QUOTA = "ovp_youtube_api_quota_until";
+  const STORAGE_HISTORY = "ovp_play_history";
+  const STORAGE_DRIVE_FOLDER = "ovp_gdrive_folder";
+  const HISTORY_MAX = 80;
 
   const btnSettings = document.getElementById("btn-settings");
   const btnSettingsClose = document.getElementById("btn-settings-close");
@@ -19,16 +22,25 @@
   const btnYoutubeSearch = document.getElementById("btn-youtube-search");
   const youtubeMessage = document.getElementById("youtube-message");
   const youtubeResults = document.getElementById("youtube-results");
-  const karaokeCatalogEl = document.getElementById("karaoke-catalog");
-  const catalogLoadStatus = document.getElementById("catalog-load-status");
   const queueList = document.getElementById("queue-list");
   const queueEmpty = document.getElementById("queue-empty");
   const tabBadgeUpnext = document.getElementById("tab-badge-upnext");
   const btnClearQueue = document.getElementById("btn-clear-queue");
+  const historyList = document.getElementById("history-list");
+  const historyEmpty = document.getElementById("history-empty");
+  const tabBadgeHistory = document.getElementById("tab-badge-history");
+  const btnClearHistory = document.getElementById("btn-clear-history");
+  const driveLibraryEl = document.getElementById("drive-library");
+  const driveLibraryStatus = document.getElementById("drive-library-status");
+  const gdriveFolderUrl = document.getElementById("gdrive-folder-url");
+  const btnSaveGdriveFolder = document.getElementById("btn-save-gdrive-folder");
+  const gdriveFolderStatus = document.getElementById("gdrive-folder-status");
+  const gdriveHost = document.getElementById("gdrive-player");
   const settingsTabButtons = document.querySelectorAll(".settings-tab");
   const settingsTabPanels = {
     upnext: document.getElementById("panel-upnext"),
     songs: document.getElementById("panel-songs"),
+    history: document.getElementById("panel-history"),
     config: document.getElementById("panel-config"),
   };
 
@@ -54,8 +66,11 @@
   const iconPause = btnPlay.querySelector(".icon-pause");
 
   let objectUrl = null;
-  let playbackMode = "none"; // none | file | youtube
+  let playbackMode = "none"; // none | file | youtube | gdrive | gdrive-embed
+  /** @type {{ id: string; title: string; thumbnail?: string; source?: string }[]} */
+  let driveLibraryItems = [];
   let ytProgressTimer = null;
+  let driveEmbedTimer = null;
   let lastVolume = 85;
   /** @type {{ type: "youtube" | "file"; title: string; videoId?: string; file?: File }[]} */
   let playQueue = [];
@@ -65,8 +80,13 @@
     window.dispatchEvent(new CustomEvent("ovp:state"));
   }
 
-  function keyFingerprint(key) {
-    return String(key).slice(-8);
+  function quotaMapId(key) {
+    return String(key);
+  }
+
+  function keyDisplaySuffix(key) {
+    const s = String(key);
+    return s.length > 4 ? s.slice(-4) : s;
   }
 
   function loadQuotaMap() {
@@ -89,11 +109,11 @@
 
   function isKeyExhausted(key) {
     const map = loadQuotaMap();
-    const fp = keyFingerprint(key);
-    const until = map[fp];
+    const id = quotaMapId(key);
+    const until = map[id];
     if (!until) return false;
     if (Date.now() >= new Date(until).getTime()) {
-      delete map[fp];
+      delete map[id];
       saveQuotaMap(map);
       return false;
     }
@@ -102,7 +122,7 @@
 
   function markKeyExhausted(key) {
     const map = loadQuotaMap();
-    map[keyFingerprint(key)] = endOfUtcDayIso();
+    map[quotaMapId(key)] = endOfUtcDayIso();
     saveQuotaMap(map);
     renderApiKeysList();
     updateApiKeyStatus();
@@ -122,27 +142,36 @@
     if (!list.length) {
       const legacy = localStorage.getItem(STORAGE_KEY_LEGACY)?.trim();
       if (legacy) list = [{ id: "legacy", label: "Key 1", key: legacy }];
-      else {
-        const cfgList = window.OVP_CONFIG?.youtubeApiKeys;
-        if (Array.isArray(cfgList) && cfgList.length) {
-          list = cfgList.map((e, i) => ({
-            id: e.id || `cfg-${i}`,
-            label: e.label || `Config ${i + 1}`,
-            key: e.key || e,
-          }));
-        } else {
-          const cfg = window.OVP_CONFIG?.youtubeApiKey?.trim();
-          if (cfg) list = [{ id: "config", label: "From config", key: cfg }];
-        }
-      }
     }
-    return list
+
+    const cfgList = Array.isArray(window.OVP_CONFIG?.youtubeApiKeys) ? window.OVP_CONFIG.youtubeApiKeys : [];
+    const cfgKeys = cfgList
+      .map((e, i) => ({
+        id: e.id || `cfg-${i}`,
+        label: e.label || `Default ${i + 1}`,
+        key: (e.key || e || "").toString().trim(),
+      }))
+      .filter((e) => e.key);
+    const cfgSingle = (window.OVP_CONFIG?.driveApiKey || window.OVP_CONFIG?.youtubeApiKey || "").trim();
+    if (cfgSingle) {
+      cfgKeys.unshift({ id: "config-default", label: "Default", key: cfgSingle });
+    }
+    if (cfgKeys.length) {
+      list = [...cfgKeys, ...list];
+    }
+    const normalized = list
       .filter((e) => e.key?.trim())
       .map((e, i) => ({
         id: e.id || `key-${i}`,
         label: e.label || `Key ${i + 1}`,
         key: e.key.trim(),
       }));
+    const seen = new Set();
+    return normalized.filter((e) => {
+      if (seen.has(e.key)) return false;
+      seen.add(e.key);
+      return true;
+    });
   }
 
   function saveApiKeysList(list) {
@@ -160,6 +189,18 @@
     return getApiKeysList().length > 0;
   }
 
+  function hasActiveApiKey() {
+    return getApiKeysList().some((e) => !isKeyExhausted(e.key));
+  }
+
+  function shouldTryNextApiKey(err) {
+    if (err?.quota) return true;
+    const status = err?.status;
+    if (status === 403 || status === 401) return true;
+    const msg = (err?.message || "").toLowerCase();
+    return /api key|referer|referrer|forbidden|permission|quota|exceeded|suspended/.test(msg);
+  }
+
   async function runWithApiKeys(fn) {
     const keys = getApiKeysList();
     if (!keys.length) {
@@ -174,10 +215,14 @@
         return await fn(entry.key);
       } catch (err) {
         lastErr = err;
-        if (err?.quota) {
-          markKeyExhausted(entry.key);
+        const moreKeys = keys.some(
+          (other) => other.key !== entry.key && !isKeyExhausted(other.key)
+        );
+        if (moreKeys && shouldTryNextApiKey(err)) {
+          if (err?.quota) markKeyExhausted(entry.key);
           continue;
         }
+        if (err?.quota) markKeyExhausted(entry.key);
         throw err;
       }
     }
@@ -223,7 +268,7 @@
       label.textContent = entry.label;
       const meta = document.createElement("span");
       meta.className = "api-key-item-meta";
-      const status = isKeyExhausted(entry.key) ? "Quota used today" : `••••${keyFingerprint(entry.key)}`;
+      const status = isKeyExhausted(entry.key) ? "Quota used today" : `••••${keyDisplaySuffix(entry.key)}`;
       meta.textContent = status;
       const remove = document.createElement("button");
       remove.type = "button";
@@ -254,7 +299,8 @@
       panel.hidden = !show;
       panel.classList.toggle("hidden", !show);
     });
-    if (tabId === "songs") void loadAndRenderKaraokeCatalog();
+    if (tabId === "songs") void refreshDriveLibrary();
+    if (tabId === "config") fillDriveFolderInput();
   }
 
   settingsTabButtons.forEach((tab) => {
@@ -367,6 +413,7 @@
     if (youtubeApiKeyNew) youtubeApiKeyNew.value = "";
     if (youtubeApiKeyLabel) youtubeApiKeyLabel.value = "";
     renderApiKeysList();
+    emitLocalStateChange();
     if (apiKeyStatus) {
       apiKeyStatus.textContent = "API key added.";
       apiKeyStatus.className = "settings-status ok";
@@ -438,7 +485,7 @@
   }
 
   function updateBuffer() {
-    if (playbackMode !== "file") {
+    if (!isHtml5Mode()) {
       progressBuffer.style.width = "0%";
       return;
     }
@@ -451,6 +498,7 @@
   }
 
   async function togglePlay() {
+    if (playbackMode === "gdrive-embed") return;
     if (playbackMode === "youtube") {
       const yt = getYoutubePlayer();
       if (!yt) return;
@@ -485,6 +533,14 @@
     return { type: "youtube", videoId, title: title || "YouTube video" };
   }
 
+  function gdriveTrack(fileId, title) {
+    return { type: "gdrive", fileId, title: title || "Google Drive video" };
+  }
+
+  function isHtml5Mode() {
+    return playbackMode === "file" || playbackMode === "gdrive";
+  }
+
   function fileTrack(file) {
     return {
       type: "file",
@@ -493,9 +549,129 @@
     };
   }
 
+  function historyKey(entry) {
+    if (entry?.type === "youtube" && entry.videoId) return `yt:${entry.videoId}`;
+    if (entry?.type === "gdrive" && entry.fileId) return `gd:${entry.fileId}`;
+    if (entry?.type === "file") return `file:${entry.title}`;
+    return "";
+  }
+
+  function loadPlayHistory() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .filter((e) => e && e.title)
+        .map((e) => ({
+          type: e.type === "file" ? "file" : e.type === "gdrive" ? "gdrive" : "youtube",
+          title: String(e.title),
+          videoId: e.videoId ? String(e.videoId) : "",
+          fileId: e.fileId ? String(e.fileId) : "",
+          playedAt: Number(e.playedAt) || 0,
+        }))
+        .filter((e) => (e.type === "youtube" ? e.videoId : e.type === "gdrive" ? e.fileId : true));
+    } catch {
+      return [];
+    }
+  }
+
+  function savePlayHistory(list) {
+    try {
+      localStorage.setItem(STORAGE_HISTORY, JSON.stringify(list.slice(0, HISTORY_MAX)));
+    } catch {
+      /* ignore quota */
+    }
+  }
+
+  function formatPlayedAt(ts) {
+    const t = Number(ts) || 0;
+    if (!t) return "Played";
+    const diff = Date.now() - t;
+    if (diff < 60_000) return "Just now";
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`;
+    return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  function recordPlayHistory(item) {
+    if (!item?.title) return;
+    const entry = {
+      type: item.type === "gdrive" ? "gdrive" : item.type === "file" ? "file" : "youtube",
+      title: item.title,
+      videoId: item.videoId || "",
+      fileId: item.fileId || "",
+      playedAt: Date.now(),
+    };
+    if (!historyKey(entry)) return;
+    const next = [entry, ...loadPlayHistory().filter((e) => historyKey(e) !== historyKey(entry))].slice(
+      0,
+      HISTORY_MAX
+    );
+    savePlayHistory(next);
+    renderPlayHistory();
+  }
+
+  function renderPlayHistory() {
+    if (!historyList) return;
+    const items = loadPlayHistory();
+    if (historyEmpty) historyEmpty.classList.toggle("hidden", items.length > 0);
+    if (tabBadgeHistory) {
+      if (items.length > 0) {
+        tabBadgeHistory.textContent = String(Math.min(items.length, 99));
+        tabBadgeHistory.classList.remove("hidden");
+      } else {
+        tabBadgeHistory.classList.add("hidden");
+      }
+    }
+    historyList.classList.toggle("hidden", items.length === 0);
+    historyList.innerHTML = "";
+    items.forEach((entry) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "youtube-result-btn";
+      const thumb =
+        entry.type === "youtube" && entry.videoId
+          ? `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`
+          : entry.type === "gdrive" && entry.fileId
+            ? window.OVPDrive?.thumbnailUrl?.(entry.fileId) || ""
+            : "";
+      btn.innerHTML = `
+        ${thumb ? `<img class="youtube-result-thumb" src="${thumb}" alt="" loading="lazy" />` : `<span class="history-file-thumb" aria-hidden="true">FILE</span>`}
+        <div class="youtube-result-meta">
+          <p class="youtube-result-title"></p>
+          <p class="youtube-result-channel"></p>
+        </div>
+      `;
+      btn.querySelector(".youtube-result-title").textContent = entry.title;
+      const replayYoutube = entry.type === "youtube" && entry.videoId;
+      const replayDrive = entry.type === "gdrive" && entry.fileId;
+      btn.querySelector(".youtube-result-channel").textContent = replayYoutube
+        ? `${formatPlayedAt(entry.playedAt)} · tap to play or queue`
+        : replayDrive
+          ? `${formatPlayedAt(entry.playedAt)} · Google Drive · tap to play or queue`
+          : `${formatPlayedAt(entry.playedAt)} · local file (load the file again to replay)`;
+      btn.disabled = !replayYoutube && !replayDrive;
+      if (replayYoutube) {
+        btn.addEventListener("click", () => playOrQueue(youtubeTrack(entry.videoId, entry.title)));
+      } else if (replayDrive) {
+        btn.addEventListener("click", () => playOrQueue(gdriveTrack(entry.fileId, entry.title)));
+      }
+      li.appendChild(btn);
+      historyList.appendChild(li);
+    });
+  }
+
+  function clearPlayHistory() {
+    savePlayHistory([]);
+    renderPlayHistory();
+    emitLocalStateChange();
+  }
+
   function isPlaybackActive() {
     if (playbackMode === "none" || !wrap.classList.contains("has-source")) return false;
-    if (playbackMode === "file") return !video.ended;
+    if (isHtml5Mode()) return !video.ended && !!(video.src || video.currentSrc);
+    if (playbackMode === "gdrive-embed") return !!gdriveHost && !gdriveHost.hidden;
     if (playbackMode === "youtube") {
       const yt = getYoutubePlayer();
       if (!yt || typeof yt.getPlayerState !== "function") return true;
@@ -527,7 +703,7 @@
       title.textContent = item.title;
       const type = document.createElement("span");
       type.className = "queue-item-type";
-      type.textContent = item.type === "youtube" ? "YouTube" : "File";
+      type.textContent = item.type === "youtube" ? "YouTube" : item.type === "gdrive" ? "Drive" : "File";
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "queue-item-remove";
@@ -569,8 +745,20 @@
     try {
       if (item.type === "youtube") {
         await loadYoutubeVideo(item.videoId, item.title);
+        if (playbackMode === "youtube") {
+          recordPlayHistory(item);
+          emitLocalStateChange();
+        }
+      } else if (item.type === "gdrive") {
+        await loadGdriveVideo(item.fileId, item.title);
+        if (playbackMode === "gdrive" || playbackMode === "gdrive-embed") {
+          recordPlayHistory(item);
+          emitLocalStateChange();
+        }
       } else if (item.file) {
         loadFile(item.file);
+        recordPlayHistory(item);
+        emitLocalStateChange();
       }
     } finally {
       suppressEndedAdvance = false;
@@ -606,6 +794,272 @@
     playerFrame.classList.remove("youtube-active");
   }
 
+  function clearDriveEmbedTimer() {
+    if (driveEmbedTimer) {
+      clearTimeout(driveEmbedTimer);
+      driveEmbedTimer = null;
+    }
+  }
+
+  function clearGdriveEmbed() {
+    clearDriveEmbedTimer();
+    if (!gdriveHost) return;
+    gdriveHost.innerHTML = "";
+    gdriveHost.hidden = true;
+    wrap.classList.remove("mode-gdrive-embed");
+  }
+
+  function defaultDriveFolder() {
+    const url = (window.OVP_CONFIG?.gdriveFolderUrl || "").trim();
+    const id = window.OVPDrive?.parseFolderId?.(url);
+    return id ? { id, url } : null;
+  }
+
+  function getSavedDriveFolder() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_DRIVE_FOLDER) || "null");
+      if (stored?.id) return stored;
+    } catch {
+      /* ignore */
+    }
+    return defaultDriveFolder();
+  }
+
+  function saveDriveFolder(folder) {
+    try {
+      if (!folder) localStorage.removeItem(STORAGE_DRIVE_FOLDER);
+      else localStorage.setItem(STORAGE_DRIVE_FOLDER, JSON.stringify(folder));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function fillDriveFolderInput() {
+    const saved = getSavedDriveFolder();
+    if (gdriveFolderUrl) gdriveFolderUrl.value = saved?.url || "";
+  }
+
+  function mediaSourceLabel(item) {
+    return item?.source === "gdrive" || item?.type === "gdrive" ? "drive" : "youtube";
+  }
+
+  function appendMediaResult(container, item, onPick) {
+    const li = document.createElement("li");
+    const source = mediaSourceLabel(item);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "youtube-result-btn";
+    const thumb =
+      item.thumbnail ||
+      (source === "drive" && item.id
+        ? window.OVPDrive?.thumbnailUrl?.(item.id)
+        : item.id
+          ? `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`
+          : "");
+    btn.innerHTML = `
+      ${thumb ? `<img class="youtube-result-thumb" src="${thumb}" alt="" loading="lazy" />` : `<span class="history-file-thumb" aria-hidden="true">${source === "drive" ? "DRIVE" : "YT"}</span>`}
+      <div class="youtube-result-meta">
+        <p class="youtube-result-title"></p>
+        <p class="youtube-result-channel"></p>
+      </div>
+    `;
+    btn.querySelector(".youtube-result-title").textContent = item.title || "Untitled";
+    const channel = btn.querySelector(".youtube-result-channel");
+    const badge = document.createElement("span");
+    badge.className = `source-badge source-badge-${source}`;
+    badge.textContent = source === "drive" ? "Drive" : "YouTube";
+    channel.append(badge, document.createTextNode(item.channel || (source === "drive" ? "Google Drive" : "YouTube")));
+    btn.addEventListener("click", () => onPick(item));
+    li.appendChild(btn);
+    container.appendChild(li);
+  }
+
+  function matchDriveLibrary(query) {
+    const q = String(query || "")
+      .trim()
+      .toLowerCase();
+    if (!q) return driveLibraryItems.slice();
+    return driveLibraryItems.filter((item) => String(item.title || "").toLowerCase().includes(q));
+  }
+
+  function renderDriveLibrary() {
+    if (!driveLibraryEl) return;
+    driveLibraryEl.innerHTML = "";
+    driveLibraryItems.forEach((item) => {
+      appendMediaResult(driveLibraryEl, { ...item, source: "gdrive", channel: "Google Drive" }, (entry) => {
+        void playOrQueue(gdriveTrack(entry.id, entry.title));
+      });
+    });
+  }
+
+  function setDriveLibraryStatus(text, isError) {
+    if (!driveLibraryStatus) return;
+    driveLibraryStatus.textContent = text;
+    driveLibraryStatus.classList.toggle("err", !!isError);
+  }
+
+  async function refreshDriveLibrary() {
+    const saved = getSavedDriveFolder();
+    if (!saved?.id) {
+      driveLibraryItems = [];
+      renderDriveLibrary();
+      setDriveLibraryStatus("No Drive folder saved yet. Add one in Config.");
+      return;
+    }
+    if (!hasActiveApiKey()) {
+      driveLibraryItems = [];
+      renderDriveLibrary();
+      setDriveLibraryStatus("Add an API key in Config, and enable Google Drive API for that key.", true);
+      return;
+    }
+    setDriveLibraryStatus("Loading Drive folder…");
+    try {
+      driveLibraryItems = await runWithApiKeys((apiKey) => window.OVPDrive.listFolderVideos(saved.id, apiKey));
+      renderDriveLibrary();
+      setDriveLibraryStatus(
+        driveLibraryItems.length
+          ? `${driveLibraryItems.length} videos in your Drive folder — tap to play or queue.`
+          : "Folder opened, but no video files were found. Upload MP4s and share them as Anyone with the link."
+      );
+      emitLocalStateChange();
+    } catch (err) {
+      driveLibraryItems = [];
+      renderDriveLibrary();
+      setDriveLibraryStatus(err.message || "Could not load the Drive folder.", true);
+    }
+  }
+
+  function scheduleDriveEmbedAdvance(fileId) {
+    clearDriveEmbedTimer();
+    void (async () => {
+      let durationMs = 0;
+      try {
+        if (hasActiveApiKey()) {
+          const meta = await runWithApiKeys((apiKey) => window.OVPDrive.getFileMeta(fileId, apiKey));
+          durationMs = Number(meta?.videoMediaMetadata?.durationMillis) || 0;
+        }
+      } catch {
+        durationMs = 0;
+      }
+      if (!durationMs || playbackMode !== "gdrive-embed") return;
+      driveEmbedTimer = setTimeout(() => {
+        driveEmbedTimer = null;
+        if (playbackMode === "gdrive-embed") handlePlaybackEnded();
+      }, durationMs + 1200);
+    })();
+  }
+
+  function loadGdriveEmbed(fileId, title) {
+    clearFileSource();
+    clearYoutubeSource();
+    playbackMode = "gdrive-embed";
+    wrap.classList.add("has-source", "mode-gdrive-embed");
+    wrap.classList.remove("mode-youtube", "show-center-play");
+    playerFrame.classList.remove("youtube-active");
+    if (gdriveHost) {
+      gdriveHost.hidden = false;
+      gdriveHost.removeAttribute("hidden");
+      gdriveHost.innerHTML = "";
+      const iframe = document.createElement("iframe");
+      iframe.src = `${window.OVPDrive.embedUrl(fileId)}?usp=drivesdk&autoplay=1&mute=0`;
+      iframe.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+      iframe.allowFullscreen = true;
+      iframe.referrerPolicy = "strict-origin-when-cross-origin";
+      iframe.title = title || "Google Drive video";
+      gdriveHost.appendChild(iframe);
+    }
+    nowPlayingTitle.textContent = title || "Google Drive video";
+    setPlayingUI(true);
+    setYoutubeMessage("");
+    hideYoutubeResults();
+    scheduleDriveEmbedAdvance(fileId);
+    emitLocalStateChange();
+  }
+
+  function playDriveInVideoElement(url) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => finish(new Error("timeout")), 12000);
+
+      function finish(err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        video.removeEventListener("error", onErr);
+        video.removeEventListener("playing", onPlaying);
+        if (err) reject(err);
+        else resolve();
+      }
+
+      function onErr() {
+        finish(new Error("Could not stream this Drive file."));
+      }
+
+      function onPlaying() {
+        if (!video.videoWidth && !video.videoHeight) {
+          finish(new Error("Drive stream had no video."));
+          return;
+        }
+        finish();
+      }
+
+      video.addEventListener("error", onErr, { once: true });
+      video.addEventListener("playing", onPlaying, { once: true });
+      video.controls = false;
+      video.autoplay = true;
+      video.muted = false;
+      video.volume = parseFloat(volumeInput.value);
+      if (video.volume === 0) video.volume = 0.85;
+      video.src = url;
+      const attempt = video.play();
+      if (attempt && typeof attempt.catch === "function") {
+        attempt.catch(async () => {
+          try {
+            video.muted = true;
+            await video.play();
+            video.muted = false;
+          } catch (err) {
+            finish(err);
+          }
+        });
+      }
+    });
+  }
+
+  async function loadGdriveVideo(fileId, title) {
+    if (!fileId) throw new Error("Missing Google Drive file.");
+
+    clearYoutubeSource();
+    clearGdriveEmbed();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
+    wrap.classList.remove("mode-youtube", "mode-gdrive-embed");
+    playerFrame.classList.remove("youtube-active");
+
+    playbackMode = "gdrive";
+    wrap.classList.add("has-source");
+    nowPlayingTitle.textContent = title || "Google Drive video";
+    setYoutubeMessage("Starting Google Drive video…");
+    hideYoutubeResults();
+
+    const keys = getApiKeysList().filter((e) => !isKeyExhausted(e.key));
+    const urls = window.OVPDrive.streamUrls(fileId, keys[0]?.key);
+
+    for (let i = 0; i < urls.length; i += 1) {
+      try {
+        await playDriveInVideoElement(urls[i]);
+        setYoutubeMessage("");
+        setPlayingUI(true);
+        emitLocalStateChange();
+        return;
+      } catch {
+        /* try next stream URL */
+      }
+    }
+
+    loadGdriveEmbed(fileId, title);
+  }
+
   function setYoutubeMessage(text, isError) {
     if (!text) {
       youtubeMessage.classList.add("hidden");
@@ -623,129 +1077,6 @@
     youtubeResults.innerHTML = "";
   }
 
-  function renderBrowseItems(container, items, onPick) {
-    if (!container) return;
-    container.innerHTML = "";
-    items.forEach((item) => {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "youtube-result-btn";
-      const thumb = item.thumbnail || `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`;
-      btn.innerHTML = `
-        <img class="youtube-result-thumb" src="${thumb}" alt="" loading="lazy" />
-        <div class="youtube-result-meta">
-          <p class="youtube-result-title"></p>
-          <p class="youtube-result-channel"></p>
-        </div>
-      `;
-      btn.querySelector(".youtube-result-title").textContent = item.title;
-      btn.querySelector(".youtube-result-channel").textContent = item.channel || "YouTube";
-      btn.addEventListener("click", () => onPick(item));
-      li.appendChild(btn);
-      container.appendChild(li);
-    });
-  }
-
-  function getStaticCatalogEntries() {
-    return (window.OVP_KARAOKE_CATALOG || []).map((entry) => ({
-      title: entry.title,
-      search: entry.search || `${entry.title} karaoke`,
-      videoId: entry.videoId || "",
-    }));
-  }
-
-  async function getCatalogBrowse() {
-    return getStaticCatalogEntries();
-  }
-
-  function renderStaticKaraokeList(container, entries, onPick) {
-    if (!container) return;
-    container.innerHTML = "";
-    entries.forEach((entry) => {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "youtube-result-btn";
-      const thumbWrap = entry.videoId
-        ? `<img class="youtube-result-thumb" src="https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg" alt="" loading="lazy" />`
-        : `<span class="karaoke-pick-placeholder" aria-hidden="true">${entry.title.charAt(0).toUpperCase()}</span>`;
-      btn.innerHTML = `
-        ${thumbWrap}
-        <div class="youtube-result-meta">
-          <p class="youtube-result-title"></p>
-          <p class="youtube-result-channel"></p>
-        </div>
-      `;
-      btn.querySelector(".youtube-result-title").textContent = entry.title;
-      btn.querySelector(".youtube-result-channel").textContent = entry.videoId
-        ? "Karaoke pick"
-        : "Tap to search (1 API call)";
-      btn.addEventListener("click", () => onPick(entry));
-      li.appendChild(btn);
-      container.appendChild(li);
-    });
-  }
-
-  function loadAndRenderKaraokeCatalog() {
-    if (!karaokeCatalogEl) return;
-    const entries = getStaticCatalogEntries();
-    if (catalogLoadStatus) {
-      catalogLoadStatus.textContent = `${entries.length} karaoke picks — tap a title to find & play (one search each, no bulk load).`;
-      catalogLoadStatus.classList.remove("err");
-    }
-    renderStaticKaraokeList(karaokeCatalogEl, entries, (entry) => {
-      hideYoutubeResults();
-      void pickFromCatalog(entry);
-    });
-  }
-
-  async function pickFromCatalog(entry) {
-    hideYoutubeResults();
-    if (entry.videoId) {
-      await playOrQueue(youtubeTrack(entry.videoId, entry.title));
-      return;
-    }
-
-    const query = (entry.search || `${entry.title} karaoke`).trim();
-    youtubeQuery.value = query;
-
-    const directId = window.OVPYouTube.parseVideoId(query);
-    if (directId) {
-      await playOrQueue(youtubeTrack(directId, entry.title));
-      return;
-    }
-
-    if (!hasAnyApiKey()) {
-      setYoutubeMessage("Add your YouTube API key in Config to load picks.", true);
-      setSettingsOpen(true, { tab: "config" });
-      return;
-    }
-
-    btnYoutubeSearch.disabled = true;
-    setYoutubeMessage("Finding karaoke…");
-
-    try {
-      const items = await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey));
-      if (items.length === 1) {
-        hideYoutubeResults();
-        setYoutubeMessage("");
-        await playOrQueue(youtubeTrack(items[0].id, items[0].title));
-      } else if (items.length > 0) {
-        renderYoutubeResults(items.slice(0, 10));
-        setYoutubeMessage("Pick a version below.");
-      } else {
-        hideYoutubeResults();
-        setYoutubeMessage("No karaoke found. Try another search.", true);
-      }
-    } catch (err) {
-      hideYoutubeResults();
-      setYoutubeMessage(err.message || "Search failed.", true);
-    } finally {
-      btnYoutubeSearch.disabled = false;
-    }
-  }
-
   function renderYoutubeResults(items) {
     youtubeResults.innerHTML = "";
     if (!items.length) {
@@ -754,25 +1085,21 @@
       return;
     }
     youtubeResults.classList.remove("hidden");
-    setYoutubeMessage("");
+    const driveCount = items.filter((item) => mediaSourceLabel(item) === "drive").length;
+    const ytCount = items.length - driveCount;
+    const parts = [];
+    if (driveCount) parts.push(`${driveCount} Drive`);
+    if (ytCount) parts.push(`${ytCount} YouTube`);
+    setYoutubeMessage(`${parts.join(" · ")} result${items.length === 1 ? "" : "s"}.`);
 
     items.forEach((item) => {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "youtube-result-btn";
-      btn.innerHTML = `
-        <img class="youtube-result-thumb" src="${item.thumbnail}" alt="" loading="lazy" />
-        <div class="youtube-result-meta">
-          <p class="youtube-result-title"></p>
-          <p class="youtube-result-channel"></p>
-        </div>
-      `;
-      btn.querySelector(".youtube-result-title").textContent = item.title;
-      btn.querySelector(".youtube-result-channel").textContent = item.channel || "YouTube";
-      btn.addEventListener("click", () => playOrQueue(youtubeTrack(item.id, item.title)));
-      li.appendChild(btn);
-      youtubeResults.appendChild(li);
+      appendMediaResult(youtubeResults, item, (entry) => {
+        if (mediaSourceLabel(entry) === "drive") {
+          void playOrQueue(gdriveTrack(entry.id, entry.title));
+          return;
+        }
+        void playOrQueue(youtubeTrack(entry.id, entry.title));
+      });
     });
   }
 
@@ -788,6 +1115,7 @@
 
     setYoutubeMessage("Loading video…");
     clearFileSource();
+    clearGdriveEmbed();
     clearYoutubeSource();
 
     playbackMode = "youtube";
@@ -848,8 +1176,9 @@
   function loadFile(file) {
     if (!file || !file.type.startsWith("video/")) return;
     clearYoutubeSource();
+    clearGdriveEmbed();
     playbackMode = "file";
-    wrap.classList.remove("mode-youtube");
+    wrap.classList.remove("mode-youtube", "mode-gdrive-embed");
 
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
@@ -866,6 +1195,38 @@
     e.preventDefault();
     const query = youtubeQuery.value.trim();
     if (!query) return;
+
+    const driveFolderId = window.OVPDrive?.parseFolderId?.(query);
+    if (driveFolderId) {
+      saveDriveFolder({ id: driveFolderId, url: query });
+      fillDriveFolderInput();
+      setYoutubeMessage("Drive folder saved. Loading videos…");
+      await refreshDriveLibrary();
+      return;
+    }
+
+    const driveFileId = window.OVPDrive?.parseFileId?.(query);
+    if (driveFileId) {
+      btnYoutubeSearch.disabled = true;
+      setYoutubeMessage("Loading Google Drive video…");
+      try {
+        let title = "Google Drive video";
+        if (hasActiveApiKey()) {
+          try {
+            const meta = await runWithApiKeys((apiKey) => window.OVPDrive.getFileMeta(driveFileId, apiKey));
+            title = (meta.name || title).replace(/\.[^.]+$/, "");
+          } catch {
+            /* play anyway */
+          }
+        }
+        await playOrQueue(gdriveTrack(driveFileId, title));
+      } catch (err) {
+        setYoutubeMessage(err.message || "Failed to load Google Drive video.", true);
+      } finally {
+        btnYoutubeSearch.disabled = false;
+      }
+      return;
+    }
 
     const directId = window.OVPYouTube.parseVideoId(query);
 
@@ -885,8 +1246,18 @@
       return;
     }
 
-    if (!hasAnyApiKey()) {
-      setYoutubeMessage("Add your YouTube API key in Settings to search (links still work without a key).", true);
+    const driveHits = matchDriveLibrary(query).map((item) => ({
+      ...item,
+      source: "gdrive",
+      channel: "Google Drive",
+    }));
+
+    if (!hasActiveApiKey()) {
+      if (driveHits.length) {
+        renderYoutubeResults(driveHits);
+        return;
+      }
+      setYoutubeMessage("Add your YouTube API key in Settings to search YouTube (Drive songs still appear in the list above).", true);
       setSettingsOpen(true, { tab: "config" });
       return;
     }
@@ -902,12 +1273,19 @@
     setYoutubeMessage("Searching…");
 
     try {
-      const items = await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey));
-      renderYoutubeResults(items);
-      setYoutubeMessage("");
+      const ytItems = (await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey))).map((item) => ({
+        ...item,
+        source: "youtube",
+      }));
+      renderYoutubeResults([...driveHits, ...ytItems]);
     } catch (err) {
-      renderYoutubeResults([]);
-      setYoutubeMessage(err.message || "Search failed.", true);
+      if (driveHits.length) {
+        renderYoutubeResults(driveHits);
+        setYoutubeMessage(`${err.message || "YouTube search failed."} Showing Drive matches.`, true);
+      } else {
+        renderYoutubeResults([]);
+        setYoutubeMessage(err.message || "Search failed.", true);
+      }
     } finally {
       btnYoutubeSearch.disabled = false;
     }
@@ -918,9 +1296,9 @@
   btnPlay.addEventListener("click", togglePlay);
   btnCenterPlay.addEventListener("click", togglePlay);
   wrap.addEventListener("click", (e) => {
-    if (playbackMode !== "youtube" && playbackMode !== "file") return;
+    if (playbackMode !== "youtube" && !isHtml5Mode()) return;
     if (e.target.closest(".center-play, .ctrl-btn, button")) return;
-    if (playbackMode === "file" && e.target === video) togglePlay();
+    if (isHtml5Mode() && e.target === video) togglePlay();
     if (playbackMode === "youtube" && e.target.closest(".video-wrap")) togglePlay();
   });
 
@@ -929,18 +1307,18 @@
   });
 
   video.addEventListener("play", () => {
-    if (playbackMode === "file") setPlayingUI(true);
+    if (isHtml5Mode()) setPlayingUI(true);
   });
   video.addEventListener("pause", () => {
-    if (playbackMode === "file") setPlayingUI(false);
+    if (isHtml5Mode()) setPlayingUI(false);
   });
   video.addEventListener("timeupdate", () => {
-    if (playbackMode === "file") updateProgress();
+    if (isHtml5Mode()) updateProgress();
   });
   video.addEventListener("loadedmetadata", updateProgress);
   video.addEventListener("progress", updateBuffer);
   video.addEventListener("ended", () => {
-    if (playbackMode !== "file") return;
+    if (!isHtml5Mode()) return;
     setPlayingUI(false);
     wrap.classList.add("show-center-play");
     handlePlaybackEnded();
@@ -1011,6 +1389,43 @@
     setYoutubeMessage("Queue cleared.", false);
   });
 
+  btnClearHistory?.addEventListener("click", () => {
+    clearPlayHistory();
+  });
+
+  btnSaveGdriveFolder?.addEventListener("click", () => {
+    const raw = (gdriveFolderUrl?.value || "").trim();
+    if (!raw) {
+      saveDriveFolder(null);
+      driveLibraryItems = [];
+      renderDriveLibrary();
+      setDriveLibraryStatus("No Drive folder saved yet. Add one in Config.");
+      if (gdriveFolderStatus) {
+        gdriveFolderStatus.textContent = "Drive folder cleared.";
+        gdriveFolderStatus.className = "settings-status ok";
+      }
+      emitLocalStateChange();
+      return;
+    }
+    const folderId = window.OVPDrive?.parseFolderId?.(raw);
+    if (!folderId) {
+      if (gdriveFolderStatus) {
+        gdriveFolderStatus.textContent = "Paste a Google Drive folder link (drive.google.com/drive/folders/...).";
+        gdriveFolderStatus.className = "settings-status err";
+      }
+      return;
+    }
+    saveDriveFolder({ id: folderId, url: raw });
+    if (gdriveFolderStatus) {
+      gdriveFolderStatus.textContent = "Drive folder saved. Open Songs to browse videos.";
+      gdriveFolderStatus.className = "settings-status ok";
+    }
+    void refreshDriveLibrary();
+  });
+
+  fillDriveFolderInput();
+  void refreshDriveLibrary();
+
   function clearQueue() {
     playQueue = [];
     renderQueue();
@@ -1022,7 +1437,8 @@
       const yt = getYoutubePlayer();
       return yt?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING;
     }
-    if (playbackMode === "file") return !video.paused && !video.ended;
+    if (isHtml5Mode()) return !video.paused && !video.ended;
+    if (playbackMode === "gdrive-embed") return true;
     return false;
   }
 
@@ -1040,8 +1456,10 @@
     if (playbackMode === "youtube") {
       window.OVPYouTube.destroyPlayer();
       youtubeHost.innerHTML = "";
-    } else if (playbackMode === "file") {
+    } else if (isHtml5Mode()) {
       video.pause();
+    } else if (playbackMode === "gdrive-embed") {
+      clearGdriveEmbed();
     }
     const next = playQueue.shift();
     renderQueue();
@@ -1056,6 +1474,37 @@
   async function searchYoutube(query) {
     const q = (query || "").trim();
     if (!q) return [];
+    const driveFolderId = window.OVPDrive?.parseFolderId?.(q);
+    if (driveFolderId) {
+      saveDriveFolder({ id: driveFolderId, url: q });
+      const items = hasActiveApiKey()
+        ? await runWithApiKeys((apiKey) => window.OVPDrive.listFolderVideos(driveFolderId, apiKey))
+        : [];
+      driveLibraryItems = items;
+      renderDriveLibrary();
+      return items;
+    }
+    const driveFileId = window.OVPDrive?.parseFileId?.(q);
+    if (driveFileId) {
+      let title = "Google Drive video";
+      if (hasActiveApiKey()) {
+        try {
+          const meta = await runWithApiKeys((apiKey) => window.OVPDrive.getFileMeta(driveFileId, apiKey));
+          title = (meta.name || title).replace(/\.[^.]+$/, "");
+        } catch {
+          /* keep default title */
+        }
+      }
+      return [
+        {
+          id: driveFileId,
+          title,
+          channel: "Google Drive",
+          source: "gdrive",
+          thumbnail: window.OVPDrive.thumbnailUrl(driveFileId),
+        },
+      ];
+    }
     const directId = window.OVPYouTube.parseVideoId(q);
     if (directId) {
       const meta = hasAnyApiKey()
@@ -1067,11 +1516,29 @@
           title: meta.title,
           channel: meta.channel,
           thumbnail: meta.thumbnail,
+          source: "youtube",
         },
       ];
     }
-    if (!hasAnyApiKey()) throw new Error("Host needs a YouTube API key in Config.");
-    return runWithApiKeys((apiKey) => window.OVPYouTube.search(q, apiKey));
+    const driveHits = matchDriveLibrary(q).map((item) => ({
+      ...item,
+      source: "gdrive",
+      channel: "Google Drive",
+    }));
+    if (!hasActiveApiKey()) {
+      if (driveHits.length) return driveHits;
+      throw new Error("Host needs an active YouTube API key in Config.");
+    }
+    try {
+      const ytItems = (await runWithApiKeys((apiKey) => window.OVPYouTube.search(q, apiKey))).map((item) => ({
+        ...item,
+        source: "youtube",
+      }));
+      return [...driveHits, ...ytItems];
+    } catch (err) {
+      if (driveHits.length) return driveHits;
+      throw err;
+    }
   }
 
   let pseudoFullscreen = false;
@@ -1131,8 +1598,19 @@
       queue: playQueue.map((item) => ({
         type: item.type,
         title: item.title,
-        videoId: item.videoId,
+        videoId: item.videoId || item.fileId,
       })),
+      history: loadPlayHistory()
+        .filter((e) => (e.type === "youtube" && e.videoId) || (e.type === "gdrive" && e.fileId))
+        .slice(0, 40)
+        .map((e) => ({
+          type: e.type,
+          title: e.title,
+          videoId: e.videoId || e.fileId,
+          fileId: e.fileId,
+          playedAt: e.playedAt,
+        })),
+      driveLibrary: driveLibraryItems.slice(0, 80),
     };
   }
 
@@ -1150,10 +1628,10 @@
 
   wrap.addEventListener("mouseleave", () => wrap.classList.remove("show-center-play"));
   video.addEventListener("pause", () => {
-    if (playbackMode === "file") wrap.classList.add("show-center-play");
+    if (isHtml5Mode()) wrap.classList.add("show-center-play");
   });
   video.addEventListener("play", () => {
-    if (playbackMode === "file") wrap.classList.remove("show-center-play");
+    if (isHtml5Mode()) wrap.classList.remove("show-center-play");
   });
 
   const fileBanner = document.getElementById("youtube-file-banner");
@@ -1170,6 +1648,7 @@
 
   refreshFileProtocolBanner();
   renderQueue();
+  renderPlayHistory();
 
   if (typeof ResizeObserver !== "undefined") {
     const layoutObserver = new ResizeObserver(() => notifyPlayerLayoutChange());
@@ -1183,11 +1662,11 @@
     skipToNext,
     setVolumeLevel,
     playOrQueueYoutube: (videoId, title) => playOrQueue(youtubeTrack(videoId, title)),
+    playOrQueueGdrive: (fileId, title) => playOrQueue(gdriveTrack(fileId, title)),
     clearQueue,
     removeQueueAt,
     searchYoutube,
-    getCatalogBrowse,
-    pickCatalogEntry: pickFromCatalog,
+    refreshDriveLibrary,
     clearQuotaFlags,
     toggleFullscreen,
     getState: getPublicState,
@@ -1195,12 +1674,6 @@
 
   video.addEventListener("play", emitLocalStateChange);
   video.addEventListener("pause", emitLocalStateChange);
-
-  try {
-    sessionStorage.removeItem("ovp_catalog_browse_v1");
-  } catch {
-    /* ignore */
-  }
 
   (function migrateLegacyApiKey() {
     try {
