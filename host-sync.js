@@ -114,11 +114,20 @@
         case "remove-queue":
           if (typeof payload.index === "number") ovp.removeQueueAt(payload.index);
           break;
+        case "catalog-pick":
+          if (ovp.pickCatalogEntry) {
+            await ovp.pickCatalogEntry({
+              title: payload.title,
+              search: payload.search,
+              videoId: payload.videoId,
+            });
+          }
+          break;
         case "catalog-request":
           if (ovp.getCatalogBrowse) {
             try {
-              const items = await ovp.getCatalogBrowse(!!payload.forceRefresh);
-              socket.emit("host:catalog", { items });
+              const items = await ovp.getCatalogBrowse();
+              socket.emit("host:catalog", { items, static: true });
             } catch (err) {
               socket.emit("host:catalog", { items: [], error: err.message || "Catalog load failed." });
             }

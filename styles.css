@@ -609,6 +609,38 @@ body.settings-open .settings-panel:not([hidden]) {
   max-height: min(42vh, 360px);
 }
 
+.karaoke-pick-placeholder {
+  flex-shrink: 0;
+  width: 120px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.settings-text-btn {
+  display: block;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, #c084fc);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-text-btn:hover {
+  opacity: 0.85;
+}
+
 .catalog-load-status {
   margin: 0 0 0.5rem;
   font-size: 0.75rem;

@@ -11,6 +11,7 @@
   const youtubeApiKeyNew = document.getElementById("youtube-api-key-new");
   const youtubeApiKeyLabel = document.getElementById("youtube-api-key-label");
   const btnAddApiKey = document.getElementById("btn-add-api-key");
+  const btnResetQuotaFlags = document.getElementById("btn-reset-quota-flags");
   const apiKeyStatus = document.getElementById("api-key-status");
 
   const youtubeForm = document.getElementById("youtube-form");
@@ -20,9 +21,6 @@
   const youtubeResults = document.getElementById("youtube-results");
   const karaokeCatalogEl = document.getElementById("karaoke-catalog");
   const catalogLoadStatus = document.getElementById("catalog-load-status");
-  const CATALOG_CACHE_KEY = "ovp_catalog_browse_v1";
-  let catalogBrowseCache = null;
-  let catalogBrowsePromise = null;
   const queueList = document.getElementById("queue-list");
   const queueEmpty = document.getElementById("queue-empty");
   const tabBadgeUpnext = document.getElementById("tab-badge-upnext");
@@ -189,13 +187,13 @@
     throw lastErr || new Error("All API keys failed.");
   }
 
-  function invalidateCatalogCache() {
-    catalogBrowseCache = null;
-    catalogBrowsePromise = null;
-    try {
-      sessionStorage.removeItem(CATALOG_CACHE_KEY);
-    } catch {
-      /* ignore */
+  function clearQuotaFlags() {
+    saveQuotaMap({});
+    renderApiKeysList();
+    updateApiKeyStatus();
+    if (apiKeyStatus) {
+      apiKeyStatus.textContent = "Cleared quota-used flags for today. Keys will be tried again.";
+      apiKeyStatus.className = "settings-status ok";
     }
   }
 
@@ -237,7 +235,6 @@
         saveApiKeysList(next);
         renderApiKeysList();
         updateApiKeyStatus();
-        invalidateCatalogCache();
       });
       li.append(label, meta, remove);
       apiKeyListEl.appendChild(li);
@@ -344,6 +341,8 @@
     if (e.key === "Escape" && !settingsPanel.hidden) setSettingsOpen(false);
   });
 
+  btnResetQuotaFlags?.addEventListener("click", () => clearQuotaFlags());
+
   btnAddApiKey?.addEventListener("click", () => {
     const key = youtubeApiKeyNew?.value.trim();
     if (!key) {
@@ -368,7 +367,6 @@
     if (youtubeApiKeyNew) youtubeApiKeyNew.value = "";
     if (youtubeApiKeyLabel) youtubeApiKeyLabel.value = "";
     renderApiKeysList();
-    invalidateCatalogCache();
     if (apiKeyStatus) {
       apiKeyStatus.textContent = "API key added.";
       apiKeyStatus.className = "settings-status ok";
@@ -649,117 +647,56 @@
     });
   }
 
-  async function buildCatalogBrowse(forceRefresh = false) {
-    if (catalogBrowseCache && !forceRefresh) return catalogBrowseCache;
-    if (catalogBrowsePromise && !forceRefresh) return catalogBrowsePromise;
-
-    if (!forceRefresh) {
-      try {
-        const raw = sessionStorage.getItem(CATALOG_CACHE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length) {
-            catalogBrowseCache = parsed;
-            return parsed;
-          }
-        }
-      } catch {
-        /* ignore bad cache */
-      }
-    }
-
-    catalogBrowsePromise = (async () => {
-      const catalog = window.OVP_KARAOKE_CATALOG || [];
-      const results = [];
-
-      if (!hasAnyApiKey()) {
-        catalogBrowsePromise = null;
-        return results;
-      }
-
-      for (const entry of catalog) {
-        try {
-          if (entry.videoId) {
-            results.push({
-              id: entry.videoId,
-              title: entry.title,
-              catalogTitle: entry.title,
-              channel: "Karaoke",
-              thumbnail: `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`,
-            });
-            continue;
-          }
-          const query = (entry.search || `${entry.title} karaoke`).trim();
-          const items = await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey, 5));
-          const pick =
-            items.find((i) => /karaoke/i.test(i.title)) ||
-            items.find((i) => new RegExp(entry.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(i.title)) ||
-            items[0];
-          if (pick) {
-            results.push({
-              id: pick.id,
-              title: pick.title,
-              catalogTitle: entry.title,
-              channel: pick.channel,
-              thumbnail: pick.thumbnail,
-            });
-          }
-        } catch {
-          /* skip failed entry */
-        }
-        await new Promise((r) => setTimeout(r, 100));
-      }
-
-      catalogBrowseCache = results;
-      if (results.length) {
-        try {
-          sessionStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(results));
-        } catch {
-          /* storage full */
-        }
-      }
-      catalogBrowsePromise = null;
-      return results;
-    })();
-
-    return catalogBrowsePromise;
+  function getStaticCatalogEntries() {
+    return (window.OVP_KARAOKE_CATALOG || []).map((entry) => ({
+      title: entry.title,
+      search: entry.search || `${entry.title} karaoke`,
+      videoId: entry.videoId || "",
+    }));
   }
 
-  async function getCatalogBrowse(forceRefresh = false) {
-    return buildCatalogBrowse(forceRefresh);
+  async function getCatalogBrowse() {
+    return getStaticCatalogEntries();
   }
 
-  async function loadAndRenderKaraokeCatalog() {
+  function renderStaticKaraokeList(container, entries, onPick) {
+    if (!container) return;
+    container.innerHTML = "";
+    entries.forEach((entry) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "youtube-result-btn";
+      const thumbWrap = entry.videoId
+        ? `<img class="youtube-result-thumb" src="https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg" alt="" loading="lazy" />`
+        : `<span class="karaoke-pick-placeholder" aria-hidden="true">${entry.title.charAt(0).toUpperCase()}</span>`;
+      btn.innerHTML = `
+        ${thumbWrap}
+        <div class="youtube-result-meta">
+          <p class="youtube-result-title"></p>
+          <p class="youtube-result-channel"></p>
+        </div>
+      `;
+      btn.querySelector(".youtube-result-title").textContent = entry.title;
+      btn.querySelector(".youtube-result-channel").textContent = entry.videoId
+        ? "Karaoke pick"
+        : "Tap to search (1 API call)";
+      btn.addEventListener("click", () => onPick(entry));
+      li.appendChild(btn);
+      container.appendChild(li);
+    });
+  }
+
+  function loadAndRenderKaraokeCatalog() {
     if (!karaokeCatalogEl) return;
+    const entries = getStaticCatalogEntries();
     if (catalogLoadStatus) {
-      catalogLoadStatus.textContent = "Loading karaoke library…";
+      catalogLoadStatus.textContent = `${entries.length} karaoke picks — tap a title to find & play (one search each, no bulk load).`;
       catalogLoadStatus.classList.remove("err");
     }
-
-    const items = await buildCatalogBrowse(false);
-
-    if (!items.length) {
-      if (!hasAnyApiKey()) {
-        if (catalogLoadStatus) {
-          catalogLoadStatus.textContent = "Add YouTube API key in Config to load 50+ karaoke previews.";
-          catalogLoadStatus.classList.add("err");
-        }
-        renderBrowseItems(karaokeCatalogEl, [], () => {});
-        return;
-      }
-      if (catalogLoadStatus) {
-        catalogLoadStatus.textContent = "Could not load library. Check API key and try again.";
-        catalogLoadStatus.classList.add("err");
-      }
-      return;
-    }
-
-    if (catalogLoadStatus) {
-      catalogLoadStatus.textContent = `${items.length} karaoke songs — tap to play or queue.`;
-    }
-    renderBrowseItems(karaokeCatalogEl, items, (item) => {
+    renderStaticKaraokeList(karaokeCatalogEl, entries, (entry) => {
       hideYoutubeResults();
-      void playOrQueue(youtubeTrack(item.id, item.title));
+      void pickFromCatalog(entry);
     });
   }
 
@@ -1250,12 +1187,20 @@
     removeQueueAt,
     searchYoutube,
     getCatalogBrowse,
+    pickCatalogEntry: pickFromCatalog,
+    clearQuotaFlags,
     toggleFullscreen,
     getState: getPublicState,
   };
 
   video.addEventListener("play", emitLocalStateChange);
   video.addEventListener("pause", emitLocalStateChange);
+
+  try {
+    sessionStorage.removeItem("ovp_catalog_browse_v1");
+  } catch {
+    /* ignore */
+  }
 
   (function migrateLegacyApiKey() {
     try {

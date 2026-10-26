@@ -167,29 +167,48 @@
     });
   }
 
-  function requestCatalog() {
-    if (!socket?.connected || !roomId) return;
-    if (catalogStatus) catalogStatus.textContent = "Loading karaoke library from player…";
-    send("catalog-request", {});
-  }
-
-  function renderCatalog(items, error) {
-    if (error) {
-      if (catalogStatus) catalogStatus.textContent = error;
-      remoteCatalog.innerHTML = "";
-      return;
-    }
-    if (!items?.length) {
-      if (catalogStatus) {
-        catalogStatus.textContent = "No library loaded. Add API key on the player (Config tab).";
-      }
-      return;
-    }
+  function renderLocalCatalog() {
+    const catalog = window.OVP_KARAOKE_CATALOG || [];
     if (catalogStatus) {
-      catalogStatus.textContent = `${items.length} karaoke songs — tap to play or queue.`;
+      catalogStatus.textContent = `${catalog.length} picks — tap to search on the player (one API call each).`;
     }
-    renderResultList(remoteCatalog, items, (item) => {
-      send("play-youtube", { videoId: item.id, title: item.title });
+    if (!remoteCatalog) return;
+    remoteCatalog.innerHTML = "";
+    catalog.forEach((entry) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "remote-result-btn";
+      if (entry.videoId) {
+        const img = document.createElement("img");
+        img.src = `https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`;
+        img.alt = "";
+        btn.appendChild(img);
+      } else {
+        const ph = document.createElement("span");
+        ph.className = "karaoke-pick-placeholder";
+        ph.textContent = entry.title.charAt(0).toUpperCase();
+        btn.appendChild(ph);
+      }
+      const meta = document.createElement("div");
+      meta.className = "remote-result-meta";
+      const title = document.createElement("p");
+      title.className = "remote-result-title";
+      title.textContent = entry.title;
+      const channel = document.createElement("p");
+      channel.className = "remote-result-channel";
+      channel.textContent = entry.videoId ? "Karaoke pick" : "Tap to search on player";
+      meta.append(title, channel);
+      btn.appendChild(meta);
+      btn.addEventListener("click", () => {
+        send("catalog-pick", {
+          title: entry.title,
+          search: entry.search || `${entry.title} karaoke`,
+          videoId: entry.videoId || "",
+        });
+      });
+      li.appendChild(btn);
+      remoteCatalog.appendChild(li);
     });
   }
 
@@ -226,9 +245,6 @@
     });
 
     socket.on("player:state", applyState);
-    socket.on("player:catalog", ({ items, error }) => {
-      renderCatalog(items, error);
-    });
     socket.on("player:search-results", ({ items, error }) => {
       clearTimeout(searchWaitTimer);
       searchWaitTimer = null;
@@ -267,7 +283,7 @@
       sessionStorage.setItem(STORAGE_ROOM, roomId);
       history.replaceState(null, "", `${location.pathname}?room=${roomId}`);
       showMain();
-      requestCatalog();
+      renderLocalCatalog();
     });
   }
 

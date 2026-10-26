@@ -94,7 +94,7 @@
       <div class="settings-tabpanel hidden" id="panel-songs" role="tabpanel" aria-labelledby="tab-songs" hidden>
         <h3 class="catalog-heading">Karaoke picks</h3>
         <p class="catalog-lead">Tap a song to play or queue. Use search below for anything else.</p>
-        <p class="catalog-load-status" id="catalog-load-status">Loading karaoke library…</p>
+        <p class="catalog-load-status" id="catalog-load-status">Open this tab to browse karaoke picks.</p>
         <ul class="youtube-results karaoke-catalog" id="karaoke-catalog"></ul>
 
         <h3 class="catalog-heading catalog-heading-search">Search</h3>
@@ -150,6 +150,9 @@
             placeholder="Paste new API key from Google Cloud"
           />
           <button type="button" class="settings-save-btn" id="btn-add-api-key">Add API key</button>
+          <button type="button" class="settings-text-btn" id="btn-reset-quota-flags">
+            Reset “quota used today” flags
+          </button>
           <p class="settings-hint">
             Enable <strong>YouTube Data API v3</strong> in Google Cloud. Restrict each key by HTTP referrer
             (e.g. <code>https://your-app.onrender.com/*</code>). Stored in this browser only.
