@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="theme-color" content="#0a0612" />
+  <title>OVP Remote</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="remote.css" />
+</head>
+<body>
+  <div class="remote-app">
+    <header class="remote-header">
+      <p class="remote-brand">OVP Remote</p>
+      <p class="remote-status" id="conn-status">Connecting…</p>
+    </header>
+
+    <section class="remote-join" id="screen-join">
+      <h1>Join a room</h1>
+      <p class="remote-lead">Enter the 6-character code shown on the player (Settings → Config).</p>
+      <input
+        type="text"
+        class="remote-room-input"
+        id="room-input"
+        inputmode="text"
+        autocapitalize="characters"
+        autocomplete="off"
+        maxlength="6"
+        placeholder="Room code"
+      />
+      <button type="button" class="remote-btn remote-btn-primary" id="btn-join">Join room</button>
+      <p class="remote-error hidden" id="join-error" role="alert"></p>
+    </section>
+
+    <section class="remote-main hidden" id="screen-main">
+      <div class="remote-now">
+        <p class="remote-label">Now playing</p>
+        <p class="remote-now-title" id="now-title">—</p>
+        <p class="remote-meta" id="now-meta">Waiting for player…</p>
+      </div>
+
+      <div class="remote-transport">
+        <button type="button" class="remote-round" id="btn-next" aria-label="Next song">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M6 18l8.5-6L6 6v12zm8.5 6V6h2v12h-2z"/>
+          </svg>
+        </button>
+        <button type="button" class="remote-round remote-round-lg" id="btn-play" aria-label="Play or pause">
+          <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg class="icon-pause hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+        </button>
+        <button type="button" class="remote-round" id="btn-leave" aria-label="Leave room" title="Leave room">
+          ✕
+        </button>
+      </div>
+
+      <label class="remote-label" for="volume">Volume</label>
+      <input type="range" class="remote-volume" id="volume" min="0" max="1" step="0.05" value="0.85" />
+
+      <h2 class="remote-section-title">Karaoke library</h2>
+      <p class="remote-catalog-status" id="catalog-status">Loading songs from player…</p>
+      <ul class="remote-results remote-catalog" id="remote-catalog"></ul>
+
+      <h2 class="remote-section-title">Search</h2>
+      <form class="remote-search" id="search-form">
+        <input
+          type="search"
+          class="remote-search-input"
+          id="search-query"
+          placeholder="Search or paste YouTube link"
+          autocomplete="off"
+        />
+        <button type="submit" class="remote-btn remote-btn-primary">Search</button>
+      </form>
+      <p class="remote-message hidden" id="search-message"></p>
+      <ul class="remote-results" id="search-results"></ul>
+
+      <div class="remote-queue-head">
+        <h2 class="remote-label">Up next</h2>
+        <button type="button" class="remote-text-btn" id="btn-clear-queue">Clear</button>
+      </div>
+      <p class="remote-empty" id="queue-empty">Queue is empty.</p>
+      <ol class="remote-queue" id="queue-list"></ol>
+    </section>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="karaoke-catalog.js"></script>
+  <script src="remote.js"></script>
+</body>
+</html>

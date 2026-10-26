@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>OVP — Online Videoke Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <button
+    type="button"
+    class="fab-settings"
+    id="btn-settings"
+    aria-label="OVP Settings"
+    title="Settings"
+    aria-expanded="false"
+    aria-controls="settings-panel"
+  >
+    <svg class="fab-settings-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+    </svg>
+    <span class="fab-settings-label">Settings</span>
+  </button>
+
+  <div class="settings-backdrop hidden" id="settings-backdrop" aria-hidden="true"></div>
+  <aside
+    class="settings-panel"
+    id="settings-panel"
+    role="dialog"
+    aria-labelledby="settings-title"
+    aria-hidden="true"
+    hidden
+  >
+    <div class="settings-panel-header">
+      <h2 class="settings-title" id="settings-title">OVP</h2>
+      <button type="button" class="settings-close" id="btn-settings-close" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+      <button
+        type="button"
+        class="settings-tab is-active"
+        id="tab-upnext"
+        role="tab"
+        aria-selected="true"
+        aria-controls="panel-upnext"
+        data-tab="upnext"
+      >
+        Up Next
+        <span class="settings-tab-badge hidden" id="tab-badge-upnext"></span>
+      </button>
+      <button
+        type="button"
+        class="settings-tab"
+        id="tab-songs"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-songs"
+        data-tab="songs"
+      >
+        Songs
+      </button>
+      <button
+        type="button"
+        class="settings-tab"
+        id="tab-config"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-config"
+        data-tab="config"
+      >
+        Config
+      </button>
+    </div>
+
+    <div class="settings-body">
+      <div class="settings-tabpanel" id="panel-upnext" role="tabpanel" aria-labelledby="tab-upnext">
+        <div class="queue-header">
+          <p class="queue-intro">Songs play in order after the current track.</p>
+          <button type="button" class="queue-clear" id="btn-clear-queue">Clear queue</button>
+        </div>
+        <p class="queue-empty" id="queue-empty">No songs queued. Add songs from the <strong>Songs</strong> tab.</p>
+        <ol class="queue-list" id="queue-list"></ol>
+      </div>
+
+      <div class="settings-tabpanel hidden" id="panel-songs" role="tabpanel" aria-labelledby="tab-songs" hidden>
+        <h3 class="catalog-heading">Karaoke picks</h3>
+        <p class="catalog-lead">Tap a song to play or queue. Use search below for anything else.</p>
+        <p class="catalog-load-status" id="catalog-load-status">Loading karaoke library…</p>
+        <ul class="youtube-results karaoke-catalog" id="karaoke-catalog"></ul>
+
+        <h3 class="catalog-heading catalog-heading-search">Search</h3>
+        <form class="youtube-form" id="youtube-form">
+          <div class="youtube-input-wrap">
+            <svg class="youtube-form-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M21.58 7.19a2.5 2.5 0 0 0-1.76-1.77C18.09 5.08 12 5.08 12 5.08s-6.09 0-7.82.34A2.5 2.5 0 0 0 2.42 7.2 26.3 26.3 0 0 0 2.08 12a26.3 26.3 0 0 0 .34 4.81 2.5 2.5 0 0 0 1.76 1.77C5.91 18.92 12 18.92 12 18.92s6.09 0 7.82-.34a2.5 2.5 0 0 0 1.76-1.77A26.3 26.3 0 0 0 21.92 12a26.3 26.3 0 0 0-.34-4.81zM10 15.02V8.98L15.5 12 10 15.02z"/>
+            </svg>
+            <input
+              type="search"
+              class="youtube-input"
+              id="youtube-query"
+              placeholder="Search karaoke or paste YouTube link"
+              autocomplete="off"
+            />
+          </div>
+          <button type="submit" class="youtube-submit" id="btn-youtube-search">Search</button>
+        </form>
+        <p class="youtube-banner hidden" id="youtube-file-banner" role="status">
+          YouTube cannot play when the page is opened as a file. Start a local server, then open
+          <strong id="local-url-hint">http://localhost:8080</strong> — see <code>start-server.bat</code> in this folder.
+        </p>
+        <p class="youtube-message hidden" id="youtube-message" role="alert"></p>
+        <ul class="youtube-results hidden" id="youtube-results"></ul>
+      </div>
+
+      <div class="settings-tabpanel hidden" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+        <section class="settings-about">
+          <p class="settings-app-name">OVP</p>
+          <p class="settings-app-full">Online Videoke Player</p>
+          <p class="settings-credit">Created by: <strong>Adonnis Pama</strong></p>
+        </section>
+        <section class="settings-section settings-section-flush">
+          <label class="settings-label" for="youtube-api-key">YouTube Data API key</label>
+          <input
+            type="password"
+            class="settings-input"
+            id="youtube-api-key"
+            autocomplete="off"
+            placeholder="Paste API key from Google Cloud"
+          />
+          <button type="button" class="settings-save-btn" id="btn-save-api-key">Save key</button>
+          <p class="settings-hint">
+            Enable <strong>YouTube Data API v3</strong> in Google Cloud. Restrict the key by HTTP referrer
+            (e.g. <code>http://localhost:8080/*</code> or your site URL). Open OVP over
+            <strong>http://localhost</strong>, not <code>file://</code>, or search will fail. Stored in this browser only.
+          </p>
+          <p class="settings-status" id="api-key-status" role="status"></p>
+        </section>
+        <section class="settings-section">
+          <h3 class="settings-subheading">Phone remote</h3>
+          <p class="settings-label">Room code</p>
+          <p class="remote-room-display" id="remote-room-code">—</p>
+          <p class="settings-hint">
+            Remotes connected: <strong id="remote-count">0</strong>. Share this link with phones on the same site:
+          </p>
+          <a class="remote-link" id="remote-link" href="/remote" target="_blank" rel="noopener">/remote</a>
+          <div class="remote-qr-wrap hidden" id="remote-qr-wrap">
+            <img class="remote-qr" id="remote-qr" width="180" height="180" alt="QR code to open phone remote" />
+            <p class="settings-hint">Scan with a phone camera to open the remote.</p>
+          </div>
+          <p class="settings-status" id="remote-server-status" role="status">Start with <code>npm start</code> for remotes.</p>
+        </section>
+      </div>
+    </div>
+  </aside>
+
+  <div class="app">
+    <main class="stage">
+      <section class="player-shell" aria-label="Karaoke video player">
+        <div class="player-frame">
+          <div class="video-wrap">
+            <div id="youtube-player" class="youtube-player" hidden></div>
+
+            <video
+              id="karaoke-video"
+              class="video"
+              playsinline
+              poster=""
+              preload="metadata"
+            >
+              <!-- Replace src with your karaoke MP4 when ready -->
+              <source src="" type="video/mp4" />
+              Your browser does not support HTML5 video.
+            </video>
+
+            <div class="video-placeholder" id="video-placeholder">
+              <div class="placeholder-inner">
+                <span class="placeholder-icon" aria-hidden="true">▶</span>
+                <p class="placeholder-title">No song loaded</p>
+                <p class="placeholder-hint">Open Settings → Songs to search, or load a video from the player bar</p>
+              </div>
+            </div>
+
+            <!-- Lyrics overlay slot (for later steps) -->
+            <div class="lyrics-overlay" id="lyrics-overlay" hidden>
+              <p class="lyrics-line lyrics-current" id="lyrics-current"></p>
+              <p class="lyrics-line lyrics-next" id="lyrics-next"></p>
+            </div>
+
+            <div class="yt-chrome-mask" aria-hidden="true"></div>
+
+            <button
+              type="button"
+              class="center-play"
+              id="btn-center-play"
+              aria-label="Play or pause"
+            >
+              <span class="center-play-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+
+          <div class="controls-bar">
+            <div class="progress-row">
+              <span class="time" id="time-current">0:00</span>
+              <div class="progress-track" id="progress-track">
+                <div class="progress-buffer" id="progress-buffer"></div>
+                <div class="progress-fill" id="progress-fill"></div>
+                <input
+                  type="range"
+                  class="progress-input"
+                  id="progress-input"
+                  min="0"
+                  max="100"
+                  value="0"
+                  step="0.1"
+                  aria-label="Seek"
+                />
+              </div>
+              <span class="time" id="time-duration">0:00</span>
+            </div>
+
+            <div class="controls-row">
+              <div class="controls-left">
+                <button type="button" class="ctrl-btn" id="btn-play" aria-label="Play">
+                  <svg class="icon icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                  <svg class="icon icon-pause hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                  </svg>
+                </button>
+                <button type="button" class="ctrl-btn" id="btn-next" aria-label="Next song" title="Next in queue">
+                  <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M6 18l8.5-6L6 6v12zm2.5-6l0 0zm8.5 6V6h2v12h-2z"/>
+                  </svg>
+                </button>
+                <div class="volume-group">
+                  <button type="button" class="ctrl-btn" id="btn-mute" aria-label="Mute">
+                    <svg class="icon icon-volume" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                    </svg>
+                  </button>
+                  <input
+                    type="range"
+                    class="volume-input"
+                    id="volume-input"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value="0.85"
+                    aria-label="Volume"
+                  />
+                </div>
+              </div>
+
+              <div class="now-playing">
+                <span class="now-playing-label">Now playing</span>
+                <span class="now-playing-title" id="now-playing-title">—</span>
+              </div>
+
+              <div class="controls-right">
+                <label class="file-load ctrl-btn-as-label" title="Load video file">
+                  <input type="file" id="file-input" accept="video/*" hidden />
+                  <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>
+                  </svg>
+                  <span class="sr-only">Load video</span>
+                </label>
+                <button type="button" class="ctrl-btn" id="btn-fullscreen" aria-label="Fullscreen">
+                  <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="karaoke-catalog.js"></script>
+  <script src="youtube.js"></script>
+  <script src="player.js"></script>
+  <script src="host-sync.js"></script>
+</body>
+</html>

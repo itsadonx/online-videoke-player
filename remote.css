@@ -1,0 +1,355 @@
+:root {
+  --bg: #0a0612;
+  --panel: #14101f;
+  --elevated: #1c1629;
+  --accent: #ff3d8a;
+  --accent-soft: #ff6eb0;
+  --text: #f4f0fa;
+  --muted: #9a8fb0;
+  --border: rgba(255, 255, 255, 0.1);
+  --font: "Outfit", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.remote-app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 1rem 1rem 2rem;
+}
+
+.remote-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.remote-brand {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.remote-status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.remote-status.ok {
+  color: #7dffb2;
+}
+
+.remote-status.err {
+  color: #ff8a9e;
+}
+
+.remote-join h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+}
+
+.remote-lead {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.remote-room-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.remote-btn {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.remote-btn-primary {
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), #cc2e6a);
+}
+
+.remote-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: #ff8a9e;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.remote-main.hidden,
+.remote-join.hidden {
+  display: none;
+}
+
+.remote-now {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.remote-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.remote-now-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.remote-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.remote-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.remote-round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.remote-round svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.remote-round-lg {
+  width: 4.25rem;
+  height: 4.25rem;
+  border-color: rgba(255, 61, 138, 0.45);
+  background: rgba(255, 61, 138, 0.15);
+}
+
+.remote-round-lg svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.remote-volume {
+  width: 100%;
+  margin-bottom: 1.25rem;
+  accent-color: var(--accent);
+}
+
+.remote-section-title {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.remote-catalog-status {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.remote-catalog {
+  max-height: min(50vh, 420px);
+  margin-bottom: 0.5rem;
+}
+
+.remote-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.remote-search-input {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.remote-message {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.remote-message.err {
+  color: #ff8a9e;
+}
+
+.remote-results {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.remote-result-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  margin-bottom: 0.4rem;
+  padding: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: var(--panel);
+}
+
+.remote-result-btn img {
+  width: 72px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.remote-result-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.remote-result-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.remote-result-channel {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remote-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.remote-text-btn {
+  border: none;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--accent-soft);
+  background: transparent;
+}
+
+.remote-empty {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.remote-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.remote-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.remote-queue-item span {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remote-queue-remove {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+}
