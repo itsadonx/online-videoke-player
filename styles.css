@@ -1267,7 +1267,27 @@ body.settings-open .settings-panel:not([hidden]) {
   border: 0;
 }
 
-/* Fullscreen */
+/* Fullscreen (native + phone-remote fallback when gesture is required) */
+.player-frame.is-pseudo-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  border-radius: 0;
+  background: #000;
+}
+
+body.ovp-pseudo-fullscreen .fab-settings,
+body.ovp-pseudo-fullscreen .settings-panel,
+body.ovp-pseudo-fullscreen .settings-backdrop {
+  display: none !important;
+}
+
 .player-frame:fullscreen,
 .player-frame:-webkit-full-screen {
   display: flex;
@@ -1280,6 +1300,7 @@ body.settings-open .settings-panel:not([hidden]) {
   background: #000;
 }
 
+.player-frame.is-pseudo-fullscreen .video-wrap,
 .player-frame:fullscreen .video-wrap,
 .player-frame:-webkit-full-screen .video-wrap {
   flex: 1 1 auto;
@@ -1289,6 +1310,7 @@ body.settings-open .settings-panel:not([hidden]) {
   aspect-ratio: auto;
 }
 
+.player-frame.is-pseudo-fullscreen .youtube-player,
 .player-frame:fullscreen .youtube-player,
 .player-frame:-webkit-full-screen .youtube-player {
   position: absolute;
@@ -1297,6 +1319,7 @@ body.settings-open .settings-panel:not([hidden]) {
   height: 100%;
 }
 
+.player-frame.is-pseudo-fullscreen .youtube-player iframe,
 .player-frame:fullscreen .youtube-player iframe,
 .player-frame:-webkit-full-screen .youtube-player iframe {
   width: 100% !important;

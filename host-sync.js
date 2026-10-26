@@ -59,6 +59,9 @@
         case "next":
           await ovp.skipToNext();
           break;
+        case "toggle-fullscreen":
+          if (ovp.toggleFullscreen) ovp.toggleFullscreen();
+          break;
         case "set-volume":
           if (typeof payload.volume === "number") ovp.setVolumeLevel(payload.volume);
           break;
@@ -67,19 +70,44 @@
             await ovp.playOrQueueYoutube(payload.videoId, payload.title || "YouTube video");
           }
           break;
-        case "search":
-          if (payload.query && ovp.searchYoutube) {
-            try {
-              const items = await ovp.searchYoutube(payload.query);
-              socket.emit("host:search-results", { items, query: payload.query });
-            } catch (err) {
-              socket.emit("host:search-results", {
-                items: [],
-                error: err.message || "Search failed on player.",
-              });
-            }
+        case "search": {
+          const query = String(payload?.query || "").trim();
+          if (!query) {
+            socket.emit("host:search-results", {
+              items: [],
+              error: "Enter a search term or YouTube link.",
+            });
+            break;
+          }
+          if (!ovp.searchYoutube) {
+            socket.emit("host:search-results", {
+              items: [],
+              error: "Player not ready. Refresh the OVP page on the TV or PC.",
+            });
+            break;
+          }
+          const keyInfo = ovp.getState?.()?.apiKeys;
+          const needsKey = !window.OVPYouTube?.parseVideoId?.(query);
+          if (needsKey && keyInfo && !keyInfo.canSearch) {
+            const msg =
+              keyInfo.total === 0
+                ? "No API keys on the player. Open Settings → Config on the TV/PC (not on the phone) and add keys."
+                : "All player API keys hit quota today. Add another key on the player or try tomorrow.";
+            socket.emit("host:search-results", { items: [], error: msg, query });
+            break;
+          }
+          try {
+            const items = await ovp.searchYoutube(query);
+            socket.emit("host:search-results", { items, query });
+          } catch (err) {
+            socket.emit("host:search-results", {
+              items: [],
+              error: err.message || "Search failed on player.",
+              query,
+            });
           }
           break;
+        }
         case "clear-queue":
           ovp.clearQueue();
           break;

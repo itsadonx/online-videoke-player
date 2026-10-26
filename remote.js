@@ -13,9 +13,14 @@
   const btnPlay = document.getElementById("btn-play");
   const btnNext = document.getElementById("btn-next");
   const btnLeave = document.getElementById("btn-leave");
+  const btnFullscreen = document.getElementById("btn-fullscreen");
+  const fullscreenLabel = document.getElementById("fullscreen-label");
+  const iconFsEnter = btnFullscreen?.querySelector(".icon-fs-enter");
+  const iconFsExit = btnFullscreen?.querySelector(".icon-fs-exit");
   const volume = document.getElementById("volume");
   const searchForm = document.getElementById("search-form");
   const searchQuery = document.getElementById("search-query");
+  const searchHint = document.getElementById("search-hint");
   const searchMessage = document.getElementById("search-message");
   const searchResults = document.getElementById("search-results");
   const remoteCatalog = document.getElementById("remote-catalog");
@@ -30,6 +35,8 @@
   let socket = null;
   let roomId = null;
   let volumeFromServer = false;
+  let lastPlayerState = null;
+  let searchWaitTimer = null;
 
   function setConnStatus(text, kind) {
     connStatus.textContent = text;
@@ -51,8 +58,27 @@
     socket.emit("remote:command", { command, payload });
   }
 
+  function updateSearchHint(state) {
+    if (!searchHint) return;
+    const keys = state?.apiKeys;
+    if (!keys || keys.canSearch) {
+      searchHint.textContent = "";
+      searchHint.classList.remove("warn");
+      return;
+    }
+    if (keys.total === 0) {
+      searchHint.textContent =
+        "Text search needs API keys on the player (Settings → Config on the TV/PC). You can still paste a YouTube link here.";
+    } else {
+      searchHint.textContent = "All player API keys hit quota today. Add another key on the player or try tomorrow.";
+    }
+    searchHint.classList.add("warn");
+  }
+
   function applyState(state) {
     if (!state) return;
+    lastPlayerState = state;
+    updateSearchHint(state);
     nowTitle.textContent = state.nowPlaying || "—";
     const playing = state.isPlaying ? "Playing" : "Paused";
     const mode = state.playbackMode === "youtube" ? "YouTube" : state.playbackMode === "file" ? "Local file" : "Idle";
@@ -61,6 +87,15 @@
 
     iconPlay.classList.toggle("hidden", state.isPlaying);
     iconPause.classList.toggle("hidden", !state.isPlaying);
+
+    if (btnFullscreen) {
+      const fs = !!state.isFullscreen;
+      btnFullscreen.setAttribute("aria-pressed", fs ? "true" : "false");
+      btnFullscreen.setAttribute("aria-label", fs ? "Exit fullscreen on player" : "Enter fullscreen on player");
+      iconFsEnter?.classList.toggle("hidden", fs);
+      iconFsExit?.classList.toggle("hidden", !fs);
+      if (fullscreenLabel) fullscreenLabel.textContent = fs ? "Exit fullscreen" : "Fullscreen";
+    }
 
     if (typeof state.volume === "number") {
       volumeFromServer = true;
@@ -195,6 +230,8 @@
       renderCatalog(items, error);
     });
     socket.on("player:search-results", ({ items, error }) => {
+      clearTimeout(searchWaitTimer);
+      searchWaitTimer = null;
       if (error) {
         searchMessage.textContent = error;
         searchMessage.classList.remove("hidden");
@@ -241,6 +278,7 @@
 
   btnPlay.addEventListener("click", () => send("toggle-play"));
   btnNext.addEventListener("click", () => send("next"));
+  btnFullscreen?.addEventListener("click", () => send("toggle-fullscreen"));
   btnLeave.addEventListener("click", () => {
     socket?.disconnect();
     connectSocket();
@@ -256,9 +294,18 @@
     e.preventDefault();
     const query = searchQuery.value.trim();
     if (!query) return;
+    clearTimeout(searchWaitTimer);
     searchMessage.textContent = "Searching on player…";
     searchMessage.classList.remove("hidden", "err");
     send("search", { query });
+    searchWaitTimer = setTimeout(() => {
+      searchWaitTimer = null;
+      if (searchMessage.textContent.startsWith("Searching")) {
+        searchMessage.textContent =
+          "No response from the player. Keep the OVP page open on the TV/PC, confirm the room code, and run npm start / use your Render URL.";
+        searchMessage.classList.add("err");
+      }
+    }, 25000);
   });
 
   btnClearQueue.addEventListener("click", () => send("clear-queue"));

@@ -150,6 +150,33 @@ body {
   color: var(--muted);
 }
 
+.remote-fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.remote-fullscreen svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.remote-fullscreen:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .remote-transport {
   display: flex;
   align-items: center;
@@ -213,6 +240,17 @@ body {
 .remote-catalog {
   max-height: min(50vh, 420px);
   margin-bottom: 0.5rem;
+}
+
+.remote-search-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.remote-search-hint.warn {
+  color: #ffb86c;
 }
 
 .remote-search {

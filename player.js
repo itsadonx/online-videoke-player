@@ -1137,11 +1137,59 @@
     return runWithApiKeys((apiKey) => window.OVPYouTube.search(q, apiKey));
   }
 
+  let pseudoFullscreen = false;
+
+  function isPlayerFullscreen() {
+    return !!document.fullscreenElement || pseudoFullscreen;
+  }
+
+  function exitPlayerFullscreen() {
+    pseudoFullscreen = false;
+    playerFrame.classList.remove("is-pseudo-fullscreen");
+    document.body.classList.remove("ovp-pseudo-fullscreen");
+    if (document.fullscreenElement) document.exitFullscreen();
+  }
+
+  function enterPseudoFullscreen() {
+    pseudoFullscreen = true;
+    playerFrame.classList.add("is-pseudo-fullscreen");
+    document.body.classList.add("ovp-pseudo-fullscreen");
+    scheduleLayoutRefresh();
+    emitLocalStateChange();
+  }
+
+  function toggleFullscreen() {
+    if (isPlayerFullscreen()) {
+      exitPlayerFullscreen();
+      scheduleLayoutRefresh();
+      emitLocalStateChange();
+      return;
+    }
+    const req = playerFrame.requestFullscreen?.();
+    if (req && typeof req.then === "function") {
+      req.catch(() => enterPseudoFullscreen());
+    } else if (!playerFrame.requestFullscreen) {
+      enterPseudoFullscreen();
+    }
+  }
+
+  function getApiKeySummary() {
+    const keys = getApiKeysList();
+    const active = keys.filter((e) => !isKeyExhausted(e.key)).length;
+    return {
+      total: keys.length,
+      active,
+      canSearch: active > 0,
+    };
+  }
+
   function getPublicState() {
     return {
       nowPlaying: nowPlayingTitle.textContent,
       playbackMode,
       isPlaying: getIsPlaying(),
+      isFullscreen: isPlayerFullscreen(),
+      apiKeys: getApiKeySummary(),
       volume: parseFloat(volumeInput.value),
       queue: playQueue.map((item) => ({
         type: item.type,
@@ -1151,13 +1199,16 @@
     };
   }
 
-  btnFullscreen.addEventListener("click", () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else playerFrame.requestFullscreen?.();
-  });
+  btnFullscreen.addEventListener("click", () => toggleFullscreen());
 
   document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) {
+      pseudoFullscreen = false;
+      playerFrame.classList.remove("is-pseudo-fullscreen");
+      document.body.classList.remove("ovp-pseudo-fullscreen");
+    }
     scheduleLayoutRefresh();
+    emitLocalStateChange();
   });
 
   wrap.addEventListener("mouseleave", () => wrap.classList.remove("show-center-play"));
@@ -1199,6 +1250,7 @@
     removeQueueAt,
     searchYoutube,
     getCatalogBrowse,
+    toggleFullscreen,
     getState: getPublicState,
   };
 
