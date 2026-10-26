@@ -128,19 +128,29 @@
           <p class="settings-credit">Created by: <strong>Adonnis Pama</strong></p>
         </section>
         <section class="settings-section settings-section-flush">
-          <label class="settings-label" for="youtube-api-key">YouTube Data API key</label>
+          <label class="settings-label">YouTube Data API keys</label>
+          <p class="settings-hint">
+            Add multiple keys. When one hits its daily quota, OVP tries the next automatically.
+          </p>
+          <ul class="api-key-list" id="api-key-list"></ul>
+          <input
+            type="text"
+            class="settings-input"
+            id="youtube-api-key-label"
+            autocomplete="off"
+            placeholder="Label (optional, e.g. Key 2)"
+          />
           <input
             type="password"
             class="settings-input"
-            id="youtube-api-key"
+            id="youtube-api-key-new"
             autocomplete="off"
-            placeholder="Paste API key from Google Cloud"
+            placeholder="Paste new API key from Google Cloud"
           />
-          <button type="button" class="settings-save-btn" id="btn-save-api-key">Save key</button>
+          <button type="button" class="settings-save-btn" id="btn-add-api-key">Add API key</button>
           <p class="settings-hint">
-            Enable <strong>YouTube Data API v3</strong> in Google Cloud. Restrict the key by HTTP referrer
-            (e.g. <code>http://localhost:8080/*</code> or your site URL). Open OVP over
-            <strong>http://localhost</strong>, not <code>file://</code>, or search will fail. Stored in this browser only.
+            Enable <strong>YouTube Data API v3</strong> in Google Cloud. Restrict each key by HTTP referrer
+            (e.g. <code>https://your-app.onrender.com/*</code>). Stored in this browser only.
           </p>
           <p class="settings-status" id="api-key-status" role="status"></p>
         </section>

@@ -1,12 +1,16 @@
 (function () {
-  const STORAGE_KEY = "ovp_youtube_api_key";
+  const STORAGE_KEYS = "ovp_youtube_api_keys";
+  const STORAGE_KEY_LEGACY = "ovp_youtube_api_key";
+  const STORAGE_QUOTA = "ovp_youtube_api_quota_until";
 
   const btnSettings = document.getElementById("btn-settings");
   const btnSettingsClose = document.getElementById("btn-settings-close");
   const settingsPanel = document.getElementById("settings-panel");
   const settingsBackdrop = document.getElementById("settings-backdrop");
-  const youtubeApiKeyInput = document.getElementById("youtube-api-key");
-  const btnSaveApiKey = document.getElementById("btn-save-api-key");
+  const apiKeyListEl = document.getElementById("api-key-list");
+  const youtubeApiKeyNew = document.getElementById("youtube-api-key-new");
+  const youtubeApiKeyLabel = document.getElementById("youtube-api-key-label");
+  const btnAddApiKey = document.getElementById("btn-add-api-key");
   const apiKeyStatus = document.getElementById("api-key-status");
 
   const youtubeForm = document.getElementById("youtube-form");
@@ -63,10 +67,182 @@
     window.dispatchEvent(new CustomEvent("ovp:state"));
   }
 
+  function keyFingerprint(key) {
+    return String(key).slice(-8);
+  }
+
+  function loadQuotaMap() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_QUOTA) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveQuotaMap(map) {
+    localStorage.setItem(STORAGE_QUOTA, JSON.stringify(map));
+  }
+
+  function endOfUtcDayIso() {
+    const d = new Date();
+    d.setUTCHours(24, 0, 0, 0);
+    return d.toISOString();
+  }
+
+  function isKeyExhausted(key) {
+    const map = loadQuotaMap();
+    const fp = keyFingerprint(key);
+    const until = map[fp];
+    if (!until) return false;
+    if (Date.now() >= new Date(until).getTime()) {
+      delete map[fp];
+      saveQuotaMap(map);
+      return false;
+    }
+    return true;
+  }
+
+  function markKeyExhausted(key) {
+    const map = loadQuotaMap();
+    map[keyFingerprint(key)] = endOfUtcDayIso();
+    saveQuotaMap(map);
+    renderApiKeysList();
+    updateApiKeyStatus();
+  }
+
+  function getApiKeysList() {
+    let list = [];
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!list.length) {
+      const legacy = localStorage.getItem(STORAGE_KEY_LEGACY)?.trim();
+      if (legacy) list = [{ id: "legacy", label: "Key 1", key: legacy }];
+      else {
+        const cfgList = window.OVP_CONFIG?.youtubeApiKeys;
+        if (Array.isArray(cfgList) && cfgList.length) {
+          list = cfgList.map((e, i) => ({
+            id: e.id || `cfg-${i}`,
+            label: e.label || `Config ${i + 1}`,
+            key: e.key || e,
+          }));
+        } else {
+          const cfg = window.OVP_CONFIG?.youtubeApiKey?.trim();
+          if (cfg) list = [{ id: "config", label: "From config", key: cfg }];
+        }
+      }
+    }
+    return list
+      .filter((e) => e.key?.trim())
+      .map((e, i) => ({
+        id: e.id || `key-${i}`,
+        label: e.label || `Key ${i + 1}`,
+        key: e.key.trim(),
+      }));
+  }
+
+  function saveApiKeysList(list) {
+    localStorage.setItem(STORAGE_KEYS, JSON.stringify(list));
+    localStorage.removeItem(STORAGE_KEY_LEGACY);
+  }
+
   function getApiKey() {
-    const fromStorage = localStorage.getItem(STORAGE_KEY) || "";
-    const fromConfig = window.OVP_CONFIG?.youtubeApiKey || "";
-    return fromStorage.trim() || fromConfig.trim();
+    const keys = getApiKeysList();
+    const available = keys.find((e) => !isKeyExhausted(e.key));
+    return available?.key || keys[0]?.key || "";
+  }
+
+  function hasAnyApiKey() {
+    return getApiKeysList().length > 0;
+  }
+
+  async function runWithApiKeys(fn) {
+    const keys = getApiKeysList();
+    if (!keys.length) {
+      throw new Error("Add at least one YouTube API key in Config.");
+    }
+    let lastErr = null;
+    let tried = 0;
+    for (const entry of keys) {
+      if (isKeyExhausted(entry.key)) continue;
+      tried++;
+      try {
+        return await fn(entry.key);
+      } catch (err) {
+        lastErr = err;
+        if (err?.quota) {
+          markKeyExhausted(entry.key);
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!tried) {
+      throw new Error("All API keys hit today's quota. Add another key or try again tomorrow.");
+    }
+    throw lastErr || new Error("All API keys failed.");
+  }
+
+  function invalidateCatalogCache() {
+    catalogBrowseCache = null;
+    catalogBrowsePromise = null;
+    try {
+      sessionStorage.removeItem(CATALOG_CACHE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function updateApiKeyStatus() {
+    if (!apiKeyStatus) return;
+    const keys = getApiKeysList();
+    if (!keys.length) {
+      apiKeyStatus.textContent = "No API keys saved yet.";
+      apiKeyStatus.className = "settings-status";
+      return;
+    }
+    const exhausted = keys.filter((k) => isKeyExhausted(k.key)).length;
+    const active = keys.length - exhausted;
+    apiKeyStatus.textContent = `${keys.length} key(s): ${active} active, ${exhausted} quota-used today.`;
+    apiKeyStatus.className = "settings-status" + (active > 0 ? " ok" : " err");
+  }
+
+  function renderApiKeysList() {
+    if (!apiKeyListEl) return;
+    const keys = getApiKeysList();
+    apiKeyListEl.innerHTML = "";
+    keys.forEach((entry, index) => {
+      const li = document.createElement("li");
+      li.className = "api-key-item" + (isKeyExhausted(entry.key) ? " exhausted" : "");
+      const label = document.createElement("span");
+      label.className = "api-key-item-label";
+      label.textContent = entry.label;
+      const meta = document.createElement("span");
+      meta.className = "api-key-item-meta";
+      const status = isKeyExhausted(entry.key) ? "Quota used today" : `••••${keyFingerprint(entry.key)}`;
+      meta.textContent = status;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "api-key-item-remove";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Remove ${entry.label}`);
+      remove.addEventListener("click", () => {
+        const next = getApiKeysList().filter((_, i) => i !== index);
+        saveApiKeysList(next);
+        renderApiKeysList();
+        updateApiKeyStatus();
+        invalidateCatalogCache();
+      });
+      li.append(label, meta, remove);
+      apiKeyListEl.appendChild(li);
+    });
+    updateApiKeyStatus();
   }
 
   function switchSettingsTab(tabId) {
@@ -133,9 +309,9 @@
         scheduleLayoutRefresh();
       });
       switchSettingsTab(tab || "songs");
-      youtubeApiKeyInput.value = getApiKey();
-      apiKeyStatus.textContent = getApiKey() ? "Key loaded." : "No key saved yet.";
-      apiKeyStatus.className = "settings-status" + (getApiKey() ? " ok" : "");
+      renderApiKeysList();
+      if (youtubeApiKeyNew) youtubeApiKeyNew.value = "";
+      if (youtubeApiKeyLabel) youtubeApiKeyLabel.value = "";
       return;
     }
 
@@ -168,16 +344,34 @@
     if (e.key === "Escape" && !settingsPanel.hidden) setSettingsOpen(false);
   });
 
-  btnSaveApiKey.addEventListener("click", () => {
-    const key = youtubeApiKeyInput.value.trim();
-    if (key) {
-      localStorage.setItem(STORAGE_KEY, key);
-      apiKeyStatus.textContent = "API key saved in this browser.";
+  btnAddApiKey?.addEventListener("click", () => {
+    const key = youtubeApiKeyNew?.value.trim();
+    if (!key) {
+      updateApiKeyStatus();
+      if (apiKeyStatus) {
+        apiKeyStatus.textContent = "Paste an API key before adding.";
+        apiKeyStatus.className = "settings-status err";
+      }
+      return;
+    }
+    const list = getApiKeysList();
+    if (list.some((e) => e.key === key)) {
+      if (apiKeyStatus) {
+        apiKeyStatus.textContent = "That key is already in the list.";
+        apiKeyStatus.className = "settings-status err";
+      }
+      return;
+    }
+    const label = youtubeApiKeyLabel?.value.trim() || `Key ${list.length + 1}`;
+    list.push({ id: `key-${Date.now()}`, label, key });
+    saveApiKeysList(list);
+    if (youtubeApiKeyNew) youtubeApiKeyNew.value = "";
+    if (youtubeApiKeyLabel) youtubeApiKeyLabel.value = "";
+    renderApiKeysList();
+    invalidateCatalogCache();
+    if (apiKeyStatus) {
+      apiKeyStatus.textContent = "API key added.";
       apiKeyStatus.className = "settings-status ok";
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-      apiKeyStatus.textContent = "API key cleared.";
-      apiKeyStatus.className = "settings-status";
     }
   });
 
@@ -475,11 +669,10 @@
     }
 
     catalogBrowsePromise = (async () => {
-      const apiKey = getApiKey();
       const catalog = window.OVP_KARAOKE_CATALOG || [];
       const results = [];
 
-      if (!apiKey) {
+      if (!hasAnyApiKey()) {
         catalogBrowsePromise = null;
         return results;
       }
@@ -497,7 +690,7 @@
             continue;
           }
           const query = (entry.search || `${entry.title} karaoke`).trim();
-          const items = await window.OVPYouTube.search(query, apiKey, 5);
+          const items = await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey, 5));
           const pick =
             items.find((i) => /karaoke/i.test(i.title)) ||
             items.find((i) => new RegExp(entry.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(i.title)) ||
@@ -546,7 +739,7 @@
     const items = await buildCatalogBrowse(false);
 
     if (!items.length) {
-      if (!getApiKey()) {
+      if (!hasAnyApiKey()) {
         if (catalogLoadStatus) {
           catalogLoadStatus.textContent = "Add YouTube API key in Config to load 50+ karaoke previews.";
           catalogLoadStatus.classList.add("err");
@@ -586,8 +779,7 @@
       return;
     }
 
-    const apiKey = getApiKey();
-    if (!apiKey) {
+    if (!hasAnyApiKey()) {
       setYoutubeMessage("Add your YouTube API key in Config to load picks.", true);
       setSettingsOpen(true, { tab: "config" });
       return;
@@ -597,7 +789,7 @@
     setYoutubeMessage("Finding karaoke…");
 
     try {
-      const items = await window.OVPYouTube.search(query, apiKey);
+      const items = await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey));
       if (items.length === 1) {
         hideYoutubeResults();
         setYoutubeMessage("");
@@ -738,14 +930,15 @@
     const query = youtubeQuery.value.trim();
     if (!query) return;
 
-    const apiKey = getApiKey();
     const directId = window.OVPYouTube.parseVideoId(query);
 
     if (directId) {
       btnYoutubeSearch.disabled = true;
       setYoutubeMessage("Loading video…");
       try {
-        const meta = await window.OVPYouTube.resolveDirectVideo(query, apiKey);
+        const meta = hasAnyApiKey()
+          ? await runWithApiKeys((apiKey) => window.OVPYouTube.resolveDirectVideo(query, apiKey))
+          : await window.OVPYouTube.resolveDirectVideo(query, "");
         await playOrQueue(youtubeTrack(meta.id, meta.title));
       } catch (err) {
         setYoutubeMessage(err.message || "Failed to load YouTube video.", true);
@@ -755,7 +948,7 @@
       return;
     }
 
-    if (!apiKey) {
+    if (!hasAnyApiKey()) {
       setYoutubeMessage("Add your YouTube API key in Settings to search (links still work without a key).", true);
       setSettingsOpen(true, { tab: "config" });
       return;
@@ -772,7 +965,7 @@
     setYoutubeMessage("Searching…");
 
     try {
-      const items = await window.OVPYouTube.search(query, apiKey);
+      const items = await runWithApiKeys((apiKey) => window.OVPYouTube.search(query, apiKey));
       renderYoutubeResults(items);
       setYoutubeMessage("");
     } catch (err) {
@@ -926,10 +1119,11 @@
   async function searchYoutube(query) {
     const q = (query || "").trim();
     if (!q) return [];
-    const apiKey = getApiKey();
     const directId = window.OVPYouTube.parseVideoId(q);
     if (directId) {
-      const meta = await window.OVPYouTube.resolveDirectVideo(q, apiKey);
+      const meta = hasAnyApiKey()
+        ? await runWithApiKeys((apiKey) => window.OVPYouTube.resolveDirectVideo(q, apiKey))
+        : await window.OVPYouTube.resolveDirectVideo(q, "");
       return [
         {
           id: meta.id,
@@ -939,8 +1133,8 @@
         },
       ];
     }
-    if (!apiKey) throw new Error("Host needs a YouTube API key in Config.");
-    return window.OVPYouTube.search(q, apiKey);
+    if (!hasAnyApiKey()) throw new Error("Host needs a YouTube API key in Config.");
+    return runWithApiKeys((apiKey) => window.OVPYouTube.search(q, apiKey));
   }
 
   function getPublicState() {
@@ -1011,6 +1205,17 @@
   video.addEventListener("play", emitLocalStateChange);
   video.addEventListener("pause", emitLocalStateChange);
 
+  (function migrateLegacyApiKey() {
+    try {
+      if (localStorage.getItem(STORAGE_KEYS)) return;
+      const legacy = localStorage.getItem(STORAGE_KEY_LEGACY)?.trim();
+      if (legacy) saveApiKeysList([{ id: "legacy", label: "Key 1", key: legacy }]);
+    } catch {
+      /* ignore */
+    }
+  })();
+
+  renderApiKeysList();
   window.OVPYouTube.loadIframeApi().catch(() => {});
   emitLocalStateChange();
 })();

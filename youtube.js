@@ -55,6 +55,19 @@ window.OVPYouTube = (function () {
     return null;
   }
 
+  function buildApiError(data, status) {
+    const reasons = (data?.error?.errors || []).map((e) => e.reason).filter(Boolean);
+    const quota = status === 403 && (
+      reasons.some((r) =>
+        ["quotaExceeded", "dailyLimitExceeded", "userRateLimitExceeded", "rateLimitExceeded"].includes(r)
+      ) || /quota|limit exceeded/i.test(data?.error?.message || "")
+    );
+    const err = new Error(data?.error?.message || `YouTube API error (${status})`);
+    err.quota = quota;
+    err.status = status;
+    return err;
+  }
+
   async function fetchVideoSnippet(videoId, apiKey) {
     const params = new URLSearchParams({
       part: "snippet",
@@ -63,7 +76,10 @@ window.OVPYouTube = (function () {
     });
     const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`);
     const data = await res.json();
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (buildApiError(data, res.status).quota) throw buildApiError(data, res.status);
+      return null;
+    }
     const item = data.items?.[0];
     if (!item) return null;
     return {
@@ -118,8 +134,7 @@ window.OVPYouTube = (function () {
     const data = await res.json();
 
     if (!res.ok) {
-      const msg = data?.error?.message || `YouTube API error (${res.status})`;
-      throw new Error(msg);
+      throw buildApiError(data, res.status);
     }
 
     return (data.items || [])

@@ -406,6 +406,59 @@ body.settings-open .settings-panel:not([hidden]) {
   filter: brightness(1.06);
 }
 
+.api-key-list {
+  list-style: none;
+  margin: 0 0 0.65rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.api-key-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  font-size: 0.8rem;
+}
+
+.api-key-item.exhausted {
+  opacity: 0.65;
+  border-color: rgba(255, 138, 158, 0.35);
+}
+
+.api-key-item-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.api-key-item-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.api-key-item-remove {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.api-key-item-remove:hover {
+  color: #ff8a9e;
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .settings-hint {
   margin: 0.65rem 0 0;
   font-size: 0.72rem;
