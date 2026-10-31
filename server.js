@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 const { Readable } = require("stream");
 const express = require("express");
 const http = require("http");
@@ -100,6 +101,20 @@ app.get("/ovp-drive/:fileId", async (req, res) => {
       res.status(502).send("Could not stream Google Drive video");
     }
   }
+});
+
+app.get("/api/bgv", (_req, res) => {
+  const dir = path.join(__dirname, "BGV");
+  const videoExt = new Set([".mp4", ".webm", ".mkv", ".mov", ".m4v"]);
+  let names = [];
+  try {
+    names = fs.readdirSync(dir).filter((name) => videoExt.has(path.extname(name).toLowerCase()));
+  } catch {
+    names = [];
+  }
+  res.json({
+    videos: names.map((name) => `/BGV/${encodeURIComponent(name)}`),
+  });
 });
 
 app.use(express.static(path.join(__dirname)));

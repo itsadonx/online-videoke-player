@@ -1853,6 +1853,68 @@
   renderQueue();
   renderPlayHistory();
 
+  const bgvVideo = document.getElementById("bgv-video");
+  let bgvPlaylist = [];
+  let bgvOrder = [];
+
+  function shuffleList(list) {
+    const copy = list.slice();
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const swap = copy[i];
+      copy[i] = copy[j];
+      copy[j] = swap;
+    }
+    return copy;
+  }
+
+  function playNextBgv() {
+    if (!bgvVideo || !bgvPlaylist.length) return;
+    if (!bgvOrder.length) bgvOrder = shuffleList(bgvPlaylist);
+    const next = bgvOrder.pop();
+    bgvVideo.muted = true;
+    bgvVideo.defaultMuted = true;
+    bgvVideo.volume = 0;
+    if (bgvVideo.getAttribute("src") !== next) bgvVideo.src = next;
+    else bgvVideo.currentTime = 0;
+    const attempt = bgvVideo.play();
+    if (attempt && typeof attempt.catch === "function") attempt.catch(() => {});
+  }
+
+  function syncBgv() {
+    if (!bgvVideo) return;
+    const idle = !wrap.classList.contains("has-source");
+    bgvVideo.muted = true;
+    bgvVideo.volume = 0;
+    if (!idle) {
+      bgvVideo.pause();
+      return;
+    }
+    if (!bgvVideo.getAttribute("src") || bgvVideo.ended) playNextBgv();
+    else {
+      const attempt = bgvVideo.play();
+      if (attempt && typeof attempt.catch === "function") attempt.catch(() => {});
+    }
+  }
+
+  bgvVideo?.addEventListener("loadeddata", () => wrap.classList.add("has-bgv"));
+  bgvVideo?.addEventListener("error", () => wrap.classList.remove("has-bgv"));
+  bgvVideo?.addEventListener("ended", () => {
+    if (!wrap.classList.contains("has-source")) playNextBgv();
+  });
+  if (bgvVideo && typeof MutationObserver !== "undefined") {
+    const bgvObserver = new MutationObserver(() => syncBgv());
+    bgvObserver.observe(wrap, { attributes: true, attributeFilter: ["class"] });
+  }
+  fetch("/api/bgv")
+    .then((res) => (res.ok ? res.json() : { videos: [] }))
+    .then((data) => {
+      bgvPlaylist = Array.isArray(data.videos) ? data.videos : [];
+      bgvOrder = [];
+      syncBgv();
+    })
+    .catch(() => {});
+
   if (typeof ResizeObserver !== "undefined") {
     const layoutObserver = new ResizeObserver(() => notifyPlayerLayoutChange());
     if (appRoot) layoutObserver.observe(appRoot);
