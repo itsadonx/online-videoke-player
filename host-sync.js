@@ -208,6 +208,7 @@
       remoteCount = count || 0;
       updateRemoteLinks();
       broadcastState();
+      if (remoteCount > 0) closeWelcome();
     });
   }
 

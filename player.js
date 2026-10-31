@@ -845,8 +845,44 @@
     }
   }
 
+  function showSelectSong() {
+    suppressEndedAdvance = true;
+    try {
+      stopYtProgressTimer();
+      window.OVPYouTube?.destroyPlayer?.();
+      if (youtubeHost) {
+        youtubeHost.innerHTML = "";
+        youtubeHost.hidden = true;
+      }
+      clearDriveEmbedTimer();
+      driveEmbedFileId = null;
+      driveEmbedPaused = false;
+      if (gdriveHost) {
+        gdriveHost.innerHTML = "";
+        gdriveHost.hidden = true;
+      }
+      video.pause();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+      video.removeAttribute("src");
+      video.load();
+      playbackMode = "none";
+      wrap.classList.remove("has-source", "mode-youtube", "mode-gdrive-embed", "show-center-play");
+      playerFrame.classList.remove("youtube-active");
+      nowPlayingTitle.textContent = "—";
+      setPlayingUI(false);
+    } finally {
+      suppressEndedAdvance = false;
+    }
+    emitLocalStateChange();
+  }
+
   async function playNextFromQueue() {
-    if (suppressEndedAdvance || !playQueue.length) return;
+    if (suppressEndedAdvance) return;
+    if (!playQueue.length) {
+      showSelectSong();
+      return;
+    }
     while (playQueue.length) {
       const next = playQueue.shift();
       renderQueue();
