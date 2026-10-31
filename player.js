@@ -23,6 +23,7 @@
   const youtubeMessage = document.getElementById("youtube-message");
   const youtubeResults = document.getElementById("youtube-results");
   const queueList = document.getElementById("queue-list");
+  const reservedCount = document.getElementById("reserved-count");
   const queueEmpty = document.getElementById("queue-empty");
   const tabBadgeUpnext = document.getElementById("tab-badge-upnext");
   const btnClearQueue = document.getElementById("btn-clear-queue");
@@ -75,6 +76,8 @@
   /** @type {{ type: "youtube" | "file"; title: string; videoId?: string; file?: File }[]} */
   let playQueue = [];
   let suppressEndedAdvance = false;
+  let lastReserveNotice = null;
+  let reserveToastTimer = null;
 
   function emitLocalStateChange() {
     window.dispatchEvent(new CustomEvent("ovp:state"));
@@ -681,6 +684,13 @@
   }
 
   function renderQueue() {
+    if (reservedCount) {
+      reservedCount.textContent = `R: ${playQueue.length}`;
+      reservedCount.setAttribute(
+        "aria-label",
+        `${playQueue.length} reserved song${playQueue.length === 1 ? "" : "s"} in Up Next`
+      );
+    }
     if (!queueList) return;
     if (queueEmpty) queueEmpty.classList.toggle("hidden", playQueue.length > 0);
     if (tabBadgeUpnext) {
@@ -732,12 +742,33 @@
     emitLocalStateChange();
   }
 
+  function showReservedToast() {
+    lastReserveNotice = { id: Date.now(), message: "Successfully Reserved" };
+    const toast = document.getElementById("reserve-toast");
+    if (toast) {
+      toast.textContent = lastReserveNotice.message;
+      toast.classList.add("is-visible");
+      clearTimeout(reserveToastTimer);
+      reserveToastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2200);
+    }
+    emitLocalStateChange();
+  }
+
+  function didReservationStart(item) {
+    if (item.type === "youtube") return playbackMode === "youtube";
+    if (item.type === "gdrive") return playbackMode === "gdrive" || playbackMode === "gdrive-embed";
+    if (item.file) return playbackMode === "file";
+    return false;
+  }
+
   async function playOrQueue(item) {
     if (isPlaybackActive()) {
       enqueueTrack(item);
+      showReservedToast();
       return;
     }
     await playItemNow(item);
+    if (didReservationStart(item)) showReservedToast();
   }
 
   async function playItemNow(item) {
@@ -1124,12 +1155,23 @@
     youtubeHost.hidden = false;
     nowPlayingTitle.textContent = title || "YouTube video";
 
+    let autoplayTries = 0;
+    const startYoutubePlayback = (yt) => {
+      const vol = Math.round(parseFloat(volumeInput.value) * 100);
+      try {
+        yt.setVolume(vol);
+        if (vol === 0) yt.mute();
+        else yt.unMute();
+        yt.playVideo();
+      } catch {
+        /* player not ready yet */
+      }
+    };
+
     try {
       await window.OVPYouTube.mountPlayer("youtube-player", videoId, {
         onReady: (e) => {
-          const vol = Math.round(parseFloat(volumeInput.value) * 100);
-          e.target.setVolume(vol);
-          if (vol === 0) e.target.mute();
+          startYoutubePlayback(e.target);
           updateProgress();
           setYoutubeMessage("");
           hideYoutubeResults();
@@ -1140,7 +1182,14 @@
           const playing = e.data === window.YT.PlayerState.PLAYING;
           const paused = e.data === window.YT.PlayerState.PAUSED;
           const ended = e.data === window.YT.PlayerState.ENDED;
+          const waiting =
+            e.data === window.YT.PlayerState.CUED || e.data === window.YT.PlayerState.UNSTARTED;
+          if ((waiting || paused) && !ended && autoplayTries < 4) {
+            autoplayTries += 1;
+            startYoutubePlayback(e.target);
+          }
           if (playing) {
+            autoplayTries = 4;
             setPlayingUI(true);
             startYtProgressTimer();
             wrap.classList.remove("show-center-play");
@@ -1149,7 +1198,7 @@
           if (ended) {
             handlePlaybackEnded();
           }
-          if (paused || ended) {
+          if ((paused && autoplayTries >= 4) || ended) {
             setPlayingUI(false);
             stopYtProgressTimer();
             updateProgress();
@@ -1542,39 +1591,97 @@
   }
 
   let pseudoFullscreen = false;
+  let fullscreenPrompt = null;
+  const rootEl = document.documentElement;
+
+  function getFullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
 
   function isPlayerFullscreen() {
-    return !!document.fullscreenElement || pseudoFullscreen;
+    return !!getFullscreenElement() || pseudoFullscreen;
+  }
+
+  function exitDocumentFullscreen() {
+    if (!getFullscreenElement()) return;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+  }
+
+  function requestDocumentFullscreen() {
+    if (typeof rootEl.requestFullscreen === "function") {
+      try {
+        return rootEl.requestFullscreen({ navigationUI: "hide" });
+      } catch {
+        return rootEl.requestFullscreen();
+      }
+    }
+    if (typeof rootEl.webkitRequestFullscreen === "function") {
+      rootEl.webkitRequestFullscreen();
+    }
+    return null;
+  }
+
+  function dismissFullscreenPrompt() {
+    fullscreenPrompt?.remove();
+    fullscreenPrompt = null;
   }
 
   function exitPlayerFullscreen() {
     pseudoFullscreen = false;
+    dismissFullscreenPrompt();
     playerFrame.classList.remove("is-pseudo-fullscreen");
     document.body.classList.remove("ovp-pseudo-fullscreen");
-    if (document.fullscreenElement) document.exitFullscreen();
+    exitDocumentFullscreen();
   }
 
   function enterPseudoFullscreen() {
     pseudoFullscreen = true;
-    playerFrame.classList.add("is-pseudo-fullscreen");
     document.body.classList.add("ovp-pseudo-fullscreen");
     scheduleLayoutRefresh();
     emitLocalStateChange();
   }
 
+  function showFullscreenPrompt() {
+    if (fullscreenPrompt || getFullscreenElement()) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fullscreen-prompt";
+    btn.textContent = "Click to enter fullscreen";
+    btn.addEventListener("click", () => {
+      dismissFullscreenPrompt();
+      const req = requestDocumentFullscreen();
+      if (req && typeof req.then === "function") {
+        req.then(() => {
+          pseudoFullscreen = false;
+          document.body.classList.remove("ovp-pseudo-fullscreen");
+        }).catch(() => enterPseudoFullscreen());
+      } else if (!getFullscreenElement()) {
+        enterPseudoFullscreen();
+      }
+    });
+    document.body.appendChild(btn);
+    fullscreenPrompt = btn;
+  }
+
   function toggleFullscreen() {
-    if (isPlayerFullscreen()) {
+    if (pseudoFullscreen || getFullscreenElement()) {
       exitPlayerFullscreen();
       scheduleLayoutRefresh();
       emitLocalStateChange();
       return;
     }
-    const req = playerFrame.requestFullscreen?.();
-    if (req && typeof req.then === "function") {
-      req.catch(() => enterPseudoFullscreen());
-    } else if (!playerFrame.requestFullscreen) {
-      enterPseudoFullscreen();
+    let req = null;
+    try {
+      req = requestDocumentFullscreen();
+    } catch {
+      req = null;
     }
+    if (req && typeof req.then === "function") {
+      req.catch(() => showFullscreenPrompt());
+      return;
+    }
+    if (!getFullscreenElement()) showFullscreenPrompt();
   }
 
   function getApiKeySummary() {
@@ -1593,6 +1700,7 @@
       playbackMode,
       isPlaying: getIsPlaying(),
       isFullscreen: isPlayerFullscreen(),
+      reserveNotice: lastReserveNotice,
       apiKeys: getApiKeySummary(),
       volume: parseFloat(volumeInput.value),
       queue: playQueue.map((item) => ({
@@ -1610,21 +1718,25 @@
           fileId: e.fileId,
           playedAt: e.playedAt,
         })),
-      driveLibrary: driveLibraryItems.slice(0, 80),
+      driveLibrary: driveLibraryItems,
     };
   }
 
   btnFullscreen.addEventListener("click", () => toggleFullscreen());
 
-  document.addEventListener("fullscreenchange", () => {
-    if (document.fullscreenElement) {
+  function onFullscreenChange() {
+    if (getFullscreenElement()) {
       pseudoFullscreen = false;
+      dismissFullscreenPrompt();
       playerFrame.classList.remove("is-pseudo-fullscreen");
       document.body.classList.remove("ovp-pseudo-fullscreen");
     }
     scheduleLayoutRefresh();
     emitLocalStateChange();
-  });
+  }
+
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
   wrap.addEventListener("mouseleave", () => wrap.classList.remove("show-center-play"));
   video.addEventListener("pause", () => {

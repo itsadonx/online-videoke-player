@@ -1,5 +1,26 @@
 (function () {
-  if (location.protocol !== "http:" && location.protocol !== "https:") return;
+  const welcomeEl = document.getElementById("remote-welcome");
+  const btnContinue = document.getElementById("btn-continue-without-remote");
+  const welcomeRoomEl = document.getElementById("welcome-room-code");
+  const welcomeLinkEl = document.getElementById("welcome-remote-link");
+  const welcomeQrWrap = document.getElementById("welcome-qr-wrap");
+  const welcomeQrEl = document.getElementById("welcome-qr");
+  const welcomeStatusEl = document.getElementById("welcome-remote-status");
+
+  function closeWelcome() {
+    if (!welcomeEl) return;
+    welcomeEl.hidden = true;
+    welcomeEl.classList.add("hidden");
+  }
+
+  btnContinue?.addEventListener("click", closeWelcome);
+
+  if (location.protocol !== "http:" && location.protocol !== "https:") {
+    if (welcomeStatusEl) {
+      welcomeStatusEl.textContent = "Open this player from the server address to use a phone remote.";
+    }
+    return;
+  }
 
   const roomCodeEl = document.getElementById("remote-room-code");
   const remoteCountEl = document.getElementById("remote-count");
@@ -13,9 +34,15 @@
   let roomId = null;
 
   function setRemoteUiStatus(text, ok) {
-    if (!remoteStatusEl) return;
-    remoteStatusEl.textContent = text;
-    remoteStatusEl.className = "settings-status" + (ok ? " ok" : "");
+    const className = "settings-status" + (ok ? " ok" : "");
+    if (remoteStatusEl) {
+      remoteStatusEl.textContent = text;
+      remoteStatusEl.className = className;
+    }
+    if (welcomeStatusEl && !welcomeEl?.hidden) {
+      welcomeStatusEl.textContent = text;
+      welcomeStatusEl.className = className;
+    }
   }
 
   function remotePageUrl(code) {
@@ -24,18 +51,32 @@
   }
 
   function updateRemoteLinks() {
+    const url = roomId ? remotePageUrl(roomId) : remotePageUrl("");
     if (remoteLinkEl && roomId) {
-      remoteLinkEl.href = remotePageUrl(roomId);
-      remoteLinkEl.textContent = remotePageUrl(roomId);
+      remoteLinkEl.href = url;
+      remoteLinkEl.textContent = url;
+    }
+    if (welcomeLinkEl && roomId) {
+      welcomeLinkEl.href = url;
+      welcomeLinkEl.textContent = url;
     }
     if (roomCodeEl) roomCodeEl.textContent = roomId || "—";
+    if (welcomeRoomEl) welcomeRoomEl.textContent = roomId || "…";
     if (remoteCountEl) remoteCountEl.textContent = String(remoteCount);
+    const qrSrc = roomId
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(url)}`
+      : "";
     if (roomId && remoteQrEl && remoteQrWrap) {
-      const url = remotePageUrl(roomId);
-      remoteQrEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(url)}`;
+      remoteQrEl.src = qrSrc;
       remoteQrWrap.classList.remove("hidden");
     } else if (remoteQrWrap) {
       remoteQrWrap.classList.add("hidden");
+    }
+    if (roomId && welcomeQrEl && welcomeQrWrap) {
+      welcomeQrEl.src = qrSrc;
+      welcomeQrWrap.classList.remove("hidden");
+    } else if (welcomeQrWrap) {
+      welcomeQrWrap.classList.add("hidden");
     }
   }
 

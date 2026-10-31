@@ -275,6 +275,51 @@ body.settings-open .settings-panel:not([hidden]) {
   font-weight: 600;
 }
 
+.remote-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(6, 3, 12, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.remote-welcome.hidden,
+.remote-welcome[hidden] {
+  display: none;
+}
+
+.remote-welcome-card {
+  width: min(420px, 100%);
+  max-height: min(92vh, 760px);
+  overflow: auto;
+  padding: 1.25rem 1.25rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.remote-welcome-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.25rem;
+}
+
+.remote-welcome-lead {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.remote-welcome-card .settings-save-btn {
+  width: 100%;
+  margin-top: 0.85rem;
+}
+
 .remote-room-display {
   margin: 0 0 0.65rem;
   padding: 0.65rem 0.75rem;
@@ -1014,6 +1059,25 @@ body.settings-open .settings-panel:not([hidden]) {
   background: #000;
 }
 
+.reserved-count {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 8;
+  margin: 0;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  color: #fff;
+  background: rgba(10, 6, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
 .video {
   position: absolute;
   inset: 0;
@@ -1393,61 +1457,90 @@ body.settings-open .settings-panel:not([hidden]) {
   border: 0;
 }
 
-/* Fullscreen (native + phone-remote fallback when gesture is required) */
-.player-frame.is-pseudo-fullscreen {
+/* Fullscreen matches F11: the whole page, including the settings button. */
+html:fullscreen,
+html:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-deep);
+}
+
+html:fullscreen body,
+html:-webkit-full-screen body {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+body.ovp-pseudo-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
   width: 100vw;
   height: 100vh;
   max-width: 100vw;
   max-height: 100vh;
-  border-radius: 0;
-  background: #000;
+  margin: 0;
 }
 
-body.ovp-pseudo-fullscreen .fab-settings,
-body.ovp-pseudo-fullscreen .settings-panel,
-body.ovp-pseudo-fullscreen .settings-backdrop {
-  display: none !important;
+html:fullscreen .fab-settings,
+html:-webkit-full-screen .fab-settings,
+body.ovp-pseudo-fullscreen .fab-settings {
+  z-index: 10001;
 }
 
-.player-frame:fullscreen,
-.player-frame:-webkit-full-screen {
-  display: flex;
-  flex-direction: column;
-  width: 100vw;
-  height: 100vh;
-  max-width: 100vw;
-  max-height: 100vh;
-  border-radius: 0;
-  background: #000;
+html:fullscreen .settings-panel,
+html:-webkit-full-screen .settings-panel,
+body.ovp-pseudo-fullscreen .settings-panel {
+  z-index: 10002;
 }
 
-.player-frame.is-pseudo-fullscreen .video-wrap,
-.player-frame:fullscreen .video-wrap,
-.player-frame:-webkit-full-screen .video-wrap {
-  flex: 1 1 auto;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  aspect-ratio: auto;
+.reserve-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 10020;
+  margin: 0;
+  padding: 0.7rem 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(10, 6, 18, 0.45);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.player-frame.is-pseudo-fullscreen .youtube-player,
-.player-frame:fullscreen .youtube-player,
-.player-frame:-webkit-full-screen .youtube-player {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+.reserve-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
-.player-frame.is-pseudo-fullscreen .youtube-player iframe,
-.player-frame:fullscreen .youtube-player iframe,
-.player-frame:-webkit-full-screen .youtube-player iframe {
+.fullscreen-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 10000;
+  transform: translateX(-50%);
+  padding: 0.7rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  background: var(--bg-panel);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+}
+
+html:fullscreen .youtube-player iframe,
+html:-webkit-full-screen .youtube-player iframe,
+body.ovp-pseudo-fullscreen .youtube-player iframe {
   width: 100% !important;
   height: calc(100% + 72px) !important;
 }

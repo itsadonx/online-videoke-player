@@ -50,13 +50,31 @@ app.get("/ovp-drive/:fileId", async (req, res) => {
   const headers = {};
   if (req.headers.range) headers.Range = req.headers.range;
 
+  const ac = new AbortController();
+  let clientGone = false;
+  const onClientClosed = () => {
+    if (res.writableEnded) return;
+    clientGone = true;
+    // Abort outside the close stack. Doing it immediately emits an unhandled
+    // AbortError on Node 24 and stops the server.
+    setImmediate(() => {
+      if (!ac.signal.aborted) ac.abort();
+    });
+  };
+  res.on("close", onClientClosed);
+  req.on("error", () => {});
+  res.on("error", () => {});
+
   try {
-    const ac = new AbortController();
-    req.on("close", () => ac.abort());
     const upstream = await fetch(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params}`,
       { headers, redirect: "follow", signal: ac.signal }
     );
+
+    if (clientGone || res.writableEnded) {
+      upstream.body?.cancel().catch(() => {});
+      return;
+    }
 
     res.status(upstream.status);
     ["content-type", "content-length", "content-range", "accept-ranges"].forEach((name) => {
@@ -70,9 +88,17 @@ app.get("/ovp-drive/:fileId", async (req, res) => {
       res.end();
       return;
     }
-    Readable.fromWeb(upstream.body).pipe(res);
-  } catch {
-    if (!res.headersSent) res.status(502).send("Could not stream Google Drive video");
+    const stream = Readable.fromWeb(upstream.body);
+    stream.on("error", () => {
+      if (!res.writableEnded) res.destroy();
+    });
+    res.on("close", () => stream.destroy());
+    stream.pipe(res);
+  } catch (err) {
+    if (clientGone || err?.name === "AbortError" || ac.signal.aborted) return;
+    if (!res.headersSent && !res.writableEnded) {
+      res.status(502).send("Could not stream Google Drive video");
+    }
   }
 });
 

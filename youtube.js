@@ -113,6 +113,11 @@ window.OVPYouTube = (function () {
     };
   }
 
+  function karaokeQuery(query) {
+    if (/\b(karaoke|videoke)\b/i.test(query)) return query;
+    return `${query} karaoke`;
+  }
+
   async function search(query, apiKey, maxResults = 12) {
     const q = (query || "").trim();
     if (!q) throw new Error("Enter a search term or YouTube link.");
@@ -124,8 +129,9 @@ window.OVPYouTube = (function () {
     const params = new URLSearchParams({
       part: "snippet",
       type: "video",
+      videoCategoryId: "10",
       maxResults: String(maxResults),
-      q,
+      q: karaokeQuery(q),
       key: apiKey,
       safeSearch: "none",
     });

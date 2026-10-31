@@ -10,6 +10,7 @@
 
   const nowTitle = document.getElementById("now-title");
   const nowMeta = document.getElementById("now-meta");
+  const reservedCount = document.getElementById("reserved-count");
   const btnPlay = document.getElementById("btn-play");
   const btnNext = document.getElementById("btn-next");
   const btnLeave = document.getElementById("btn-leave");
@@ -22,14 +23,20 @@
   const searchQuery = document.getElementById("search-query");
   const searchHint = document.getElementById("search-hint");
   const searchMessage = document.getElementById("search-message");
-  const searchResults = document.getElementById("search-results");
+  const songList = document.getElementById("song-list");
+  const songEmpty = document.getElementById("song-empty");
   const queueList = document.getElementById("queue-list");
   const queueEmpty = document.getElementById("queue-empty");
   const btnClearQueue = document.getElementById("btn-clear-queue");
   const historyList = document.getElementById("history-list");
   const historyEmpty = document.getElementById("history-empty");
-  const driveList = document.getElementById("drive-list");
-  const driveEmpty = document.getElementById("drive-empty");
+  const tabButtons = document.querySelectorAll(".remote-tab");
+  const tabPanels = {
+    control: document.getElementById("panel-control"),
+    songs: document.getElementById("panel-songs"),
+    upnext: document.getElementById("panel-upnext"),
+    history: document.getElementById("panel-history"),
+  };
 
   const iconPlay = btnPlay.querySelector(".icon-play");
   const iconPause = btnPlay.querySelector(".icon-pause");
@@ -39,6 +46,20 @@
   let volumeFromServer = false;
   let lastPlayerState = null;
   let searchWaitTimer = null;
+  let songMode = "drive";
+  let searchItems = null;
+  let seenReserveId = null;
+  let reserveToastReady = false;
+  let reserveToastTimer = null;
+
+  function showReservedToast() {
+    const toast = document.getElementById("reserve-toast");
+    if (!toast) return;
+    toast.textContent = "Successfully Reserved";
+    toast.classList.add("is-visible");
+    clearTimeout(reserveToastTimer);
+    reserveToastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2200);
+  }
 
   function setConnStatus(text, kind) {
     connStatus.textContent = text;
@@ -63,18 +84,78 @@
   function updateSearchHint(state) {
     if (!searchHint) return;
     const keys = state?.apiKeys;
+    const base = "Type to filter Google Drive. Press Search or Enter to search Drive and YouTube.";
     if (!keys || keys.canSearch) {
-      searchHint.textContent = "";
+      searchHint.textContent = base;
       searchHint.classList.remove("warn");
       return;
     }
     if (keys.total === 0) {
       searchHint.textContent =
-        "Text search needs API keys on the player (Settings → Config on the TV/PC). You can still paste a YouTube link here.";
+        base + " YouTube search needs API keys on the player (Settings → Config).";
     } else {
-      searchHint.textContent = "All player API keys hit quota today. Add another key on the player or try tomorrow.";
+      searchHint.textContent =
+        base + " All player API keys hit quota today, so YouTube search may be unavailable.";
     }
     searchHint.classList.add("warn");
+  }
+
+  function switchTab(name) {
+    tabButtons.forEach((btn) => {
+      const on = btn.dataset.tab === name;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    Object.entries(tabPanels).forEach(([key, panel]) => {
+      if (!panel) return;
+      panel.hidden = key !== name;
+    });
+  }
+
+  function toDriveRow(item) {
+    return {
+      id: item.id,
+      title: item.title,
+      source: "gdrive",
+      channel: "Google Drive",
+      thumbnail: item.thumbnail,
+    };
+  }
+
+  function filterDriveLibrary(query) {
+    const drive = lastPlayerState?.driveLibrary || [];
+    const q = String(query || "").trim().toLowerCase();
+    const matched = !q
+      ? drive
+      : drive.filter((item) => String(item.title || "").toLowerCase().includes(q));
+    return matched.map(toDriveRow);
+  }
+
+  function renderSongList() {
+    if (!songList) return;
+    if (songMode === "search" && searchItems) {
+      if (songEmpty) {
+        songEmpty.textContent = searchItems.length ? "" : "No results.";
+        songEmpty.classList.toggle("hidden", searchItems.length > 0);
+      }
+      renderResultList(songList, searchItems, playRemoteItem);
+      return;
+    }
+    const drive = lastPlayerState?.driveLibrary || [];
+    const query = searchQuery?.value || "";
+    const items = filterDriveLibrary(query);
+    if (songEmpty) {
+      if (!drive.length) {
+        songEmpty.textContent = "No Google Drive folder on the player yet.";
+        songEmpty.classList.remove("hidden");
+      } else if (!items.length) {
+        songEmpty.textContent = "No Drive songs match.";
+        songEmpty.classList.remove("hidden");
+      } else {
+        songEmpty.classList.add("hidden");
+      }
+    }
+    renderResultList(songList, items, playRemoteItem);
   }
 
   function applyState(state) {
@@ -113,6 +194,13 @@
     }
 
     const queue = state.queue || [];
+    if (reservedCount) {
+      reservedCount.textContent = `R: ${queue.length}`;
+      reservedCount.setAttribute(
+        "aria-label",
+        `${queue.length} reserved song${queue.length === 1 ? "" : "s"}`
+      );
+    }
     queueEmpty.classList.toggle("hidden", queue.length > 0);
     queueList.innerHTML = "";
     queue.forEach((item, index) => {
@@ -150,20 +238,15 @@
       );
     }
 
-    const drive = state.driveLibrary || [];
-    if (driveEmpty) driveEmpty.classList.toggle("hidden", drive.length > 0);
-    if (driveList) {
-      renderResultList(
-        driveList,
-        drive.map((item) => ({
-          id: item.id,
-          title: item.title,
-          source: "gdrive",
-          channel: "Google Drive",
-          thumbnail: item.thumbnail,
-        })),
-        playRemoteItem
-      );
+    renderSongList();
+
+    const notice = state.reserveNotice;
+    if (!reserveToastReady) {
+      reserveToastReady = true;
+      seenReserveId = notice?.id || null;
+    } else if (notice?.id && notice.id !== seenReserveId) {
+      seenReserveId = notice.id;
+      showReservedToast();
     }
   }
 
@@ -211,28 +294,23 @@
   }
 
   function renderSearchResults(items) {
-    if (!items?.length) {
-      searchMessage.textContent = "No results.";
-      searchMessage.classList.remove("hidden");
-      searchResults.innerHTML = "";
-      return;
-    }
+    songMode = "search";
+    searchItems = items || [];
     searchMessage.classList.add("hidden");
-    renderResultList(searchResults, items, (item) => {
-      playRemoteItem(item);
-      searchResults.innerHTML = "";
-    });
+    renderSongList();
   }
 
   function showMain() {
     screenJoin.classList.add("hidden");
     screenMain.classList.remove("hidden");
+    btnLeave?.classList.remove("hidden");
     setConnStatus(`Room ${roomId}`, "ok");
   }
 
   function showJoin() {
     screenMain.classList.add("hidden");
     screenJoin.classList.remove("hidden");
+    btnLeave?.classList.add("hidden");
     roomId = null;
     sessionStorage.removeItem(STORAGE_ROOM);
     setConnStatus("Not in a room", "");
@@ -261,10 +339,12 @@
       clearTimeout(searchWaitTimer);
       searchWaitTimer = null;
       if (error) {
+        songMode = "drive";
+        searchItems = null;
         searchMessage.textContent = error;
         searchMessage.classList.remove("hidden");
         searchMessage.classList.add("err");
-        searchResults.innerHTML = "";
+        renderSongList();
         return;
       }
       searchMessage.classList.remove("err");
@@ -317,12 +397,24 @@
     send("set-volume", { volume: parseFloat(volume.value) });
   });
 
+  searchQuery?.addEventListener("input", () => {
+    songMode = "drive";
+    searchItems = null;
+    searchMessage?.classList.add("hidden");
+    renderSongList();
+  });
+
   searchForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const query = searchQuery.value.trim();
-    if (!query) return;
+    if (!query) {
+      songMode = "drive";
+      searchItems = null;
+      renderSongList();
+      return;
+    }
     clearTimeout(searchWaitTimer);
-    searchMessage.textContent = "Searching on player…";
+    searchMessage.textContent = "Searching Drive and YouTube…";
     searchMessage.classList.remove("hidden", "err");
     send("search", { query });
     searchWaitTimer = setTimeout(() => {
@@ -333,6 +425,10 @@
         searchMessage.classList.add("err");
       }
     }, 25000);
+  });
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab || "control"));
   });
 
   btnClearQueue.addEventListener("click", () => send("clear-queue"));

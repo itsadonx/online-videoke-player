@@ -129,7 +129,7 @@ window.OVPDrive = (function () {
       const params = new URLSearchParams({
         q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`,
         fields: "nextPageToken,files(id,name,mimeType,shortcutDetails(targetId,targetMimeType))",
-        pageSize: "100",
+        pageSize: "1000",
         orderBy: "name",
         key: apiKey,
         supportsAllDrives: "true",
@@ -141,7 +141,7 @@ window.OVPDrive = (function () {
       if (!res.ok) throw friendlyApiError(data, res.status);
       (data.files || []).filter(isVideoFile).forEach((file) => items.push(toLibraryItem(file)));
       pageToken = data.nextPageToken || "";
-    } while (pageToken && items.length < 500);
+    } while (pageToken);
     return items;
   }
 

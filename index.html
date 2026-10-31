@@ -11,6 +11,23 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div class="remote-welcome" id="remote-welcome" role="dialog" aria-modal="true" aria-labelledby="remote-welcome-title">
+    <div class="remote-welcome-card">
+      <h2 class="remote-welcome-title" id="remote-welcome-title">Connect a phone remote</h2>
+      <p class="remote-welcome-lead">Scan the QR code, open the link, or enter the room code. You can also connect later in Settings → Config.</p>
+      <p class="settings-label">Room code</p>
+      <p class="remote-room-display" id="welcome-room-code">…</p>
+      <p class="settings-label">Remote link</p>
+      <a class="remote-link" id="welcome-remote-link" href="/remote" target="_blank" rel="noopener">/remote</a>
+      <div class="remote-qr-wrap hidden" id="welcome-qr-wrap">
+        <img class="remote-qr" id="welcome-qr" width="180" height="180" alt="QR code to open the phone remote" />
+        <p class="settings-hint">Scan with a phone camera to open the remote.</p>
+      </div>
+      <p class="settings-status" id="welcome-remote-status" role="status">Preparing the room…</p>
+      <button type="button" class="settings-save-btn" id="btn-continue-without-remote">Continue without Remote</button>
+    </div>
+  </div>
+
   <button
     type="button"
     class="fab-settings"
@@ -244,6 +261,8 @@
 
             <div class="yt-chrome-mask" aria-hidden="true"></div>
 
+            <p class="reserved-count" id="reserved-count" aria-live="polite">R: 0</p>
+
             <button
               type="button"
               class="center-play"
@@ -333,6 +352,8 @@
       </section>
     </main>
   </div>
+
+  <p class="reserve-toast" id="reserve-toast" role="status" aria-live="polite"></p>
 
   <script src="config.example.js"></script>
   <script src="config.js"></script>

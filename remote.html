@@ -15,7 +15,10 @@
   <div class="remote-app">
     <header class="remote-header">
       <p class="remote-brand">OVP Remote</p>
-      <p class="remote-status" id="conn-status">Connecting…</p>
+      <div class="remote-header-actions">
+        <button type="button" class="remote-text-btn hidden" id="btn-leave">Leave</button>
+        <p class="remote-status" id="conn-status">Connecting…</p>
+      </div>
     </header>
 
     <section class="remote-join" id="screen-join">
@@ -36,81 +39,93 @@
     </section>
 
     <section class="remote-main hidden" id="screen-main">
-      <div class="remote-now">
-        <p class="remote-label">Now playing</p>
-        <p class="remote-now-title" id="now-title">—</p>
-        <p class="remote-meta" id="now-meta">Waiting for player…</p>
+      <div class="remote-tabs" role="tablist" aria-label="Remote sections">
+        <button type="button" class="remote-tab is-active" id="tab-control" role="tab" aria-selected="true" aria-controls="panel-control" data-tab="control">Control</button>
+        <button type="button" class="remote-tab" id="tab-songs" role="tab" aria-selected="false" aria-controls="panel-songs" data-tab="songs">Song list</button>
+        <button type="button" class="remote-tab" id="tab-upnext" role="tab" aria-selected="false" aria-controls="panel-upnext" data-tab="upnext">Up Next</button>
+        <button type="button" class="remote-tab" id="tab-history" role="tab" aria-selected="false" aria-controls="panel-history" data-tab="history">History</button>
       </div>
 
-      <div class="remote-transport">
-        <button type="button" class="remote-round" id="btn-next" aria-label="Next song">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M6 18l8.5-6L6 6v12zm8.5 6V6h2v12h-2z"/>
+      <div class="remote-panel" id="panel-control" role="tabpanel" aria-labelledby="tab-control">
+        <div class="remote-now">
+          <p class="remote-label">Now playing</p>
+          <p class="remote-now-title" id="now-title">—</p>
+          <p class="remote-meta" id="now-meta">Waiting for player…</p>
+          <p class="remote-reserved" id="reserved-count" aria-live="polite">R: 0</p>
+        </div>
+
+        <div class="remote-transport">
+          <button type="button" class="remote-round" id="btn-next" aria-label="Next song">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M6 18l8.5-6L6 6v12zm8.5 6V6h2v12h-2z"/>
+            </svg>
+          </button>
+          <button type="button" class="remote-round remote-round-lg" id="btn-play" aria-label="Play or pause">
+            <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg class="icon-pause hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="remote-fullscreen"
+          id="btn-fullscreen"
+          aria-pressed="false"
+          aria-label="Enter fullscreen on player"
+        >
+          <svg class="icon-fs-enter" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
           </svg>
-        </button>
-        <button type="button" class="remote-round remote-round-lg" id="btn-play" aria-label="Play or pause">
-          <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M8 5v14l11-7z"/>
+          <svg class="icon-fs-exit hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
           </svg>
-          <svg class="icon-pause hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-          </svg>
+          <span id="fullscreen-label">Fullscreen</span>
         </button>
-        <button type="button" class="remote-round" id="btn-leave" aria-label="Leave room" title="Leave room">
-          ✕
-        </button>
+
+        <label class="remote-label" for="volume">Volume</label>
+        <input type="range" class="remote-volume" id="volume" min="0" max="1" step="0.05" value="0.85" />
       </div>
 
-      <button
-        type="button"
-        class="remote-fullscreen"
-        id="btn-fullscreen"
-        aria-pressed="false"
-        aria-label="Enter fullscreen on player"
-      >
-        <svg class="icon-fs-enter" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-        </svg>
-        <svg class="icon-fs-exit hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
-        </svg>
-        <span id="fullscreen-label">Fullscreen</span>
-      </button>
-
-      <label class="remote-label" for="volume">Volume</label>
-      <input type="range" class="remote-volume" id="volume" min="0" max="1" step="0.05" value="0.85" />
-
-      <h2 class="remote-section-title">Drive library</h2>
-      <p class="remote-empty" id="drive-empty">No Google Drive folder on the player yet.</p>
-      <ul class="remote-results remote-drive-list" id="drive-list"></ul>
-
-      <h2 class="remote-section-title">Search</h2>
-      <p class="remote-search-hint" id="search-hint" role="status"></p>
-      <form class="remote-search" id="search-form">
-        <input
-          type="search"
-          class="remote-search-input"
-          id="search-query"
-          placeholder="Search or paste YouTube link"
-          autocomplete="off"
-        />
-        <button type="submit" class="remote-btn remote-btn-primary">Search</button>
-      </form>
-      <p class="remote-message hidden" id="search-message"></p>
-      <ul class="remote-results" id="search-results"></ul>
-
-      <h2 class="remote-section-title">History</h2>
-      <p class="remote-empty" id="history-empty">No recently played songs yet.</p>
-      <ul class="remote-results" id="history-list"></ul>
-
-      <div class="remote-queue-head">
-        <h2 class="remote-label">Up next</h2>
-        <button type="button" class="remote-text-btn" id="btn-clear-queue">Clear</button>
+      <div class="remote-panel" id="panel-songs" role="tabpanel" aria-labelledby="tab-songs" hidden>
+        <p class="remote-search-hint" id="search-hint" role="status">Type to filter Google Drive. Press Search or Enter to search Drive and YouTube.</p>
+        <form class="remote-search" id="search-form">
+          <input
+            type="search"
+            class="remote-search-input"
+            id="search-query"
+            placeholder="Search songs"
+            autocomplete="off"
+            enterkeyhint="search"
+          />
+          <button type="submit" class="remote-btn remote-btn-primary">Search</button>
+        </form>
+        <p class="remote-message hidden" id="search-message"></p>
+        <p class="remote-empty" id="song-empty">No Google Drive folder on the player yet.</p>
+        <ul class="remote-results remote-song-list" id="song-list"></ul>
       </div>
-      <p class="remote-empty" id="queue-empty">Queue is empty.</p>
-      <ol class="remote-queue" id="queue-list"></ol>
+
+      <div class="remote-panel" id="panel-upnext" role="tabpanel" aria-labelledby="tab-upnext" hidden>
+        <div class="remote-queue-head">
+          <h2 class="remote-label">Up next</h2>
+          <button type="button" class="remote-text-btn" id="btn-clear-queue">Clear</button>
+        </div>
+        <p class="remote-empty" id="queue-empty">Queue is empty.</p>
+        <ol class="remote-queue" id="queue-list"></ol>
+      </div>
+
+      <div class="remote-panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <h2 class="remote-section-title">History</h2>
+        <p class="remote-empty" id="history-empty">No recently played songs yet.</p>
+        <ul class="remote-results remote-history-list" id="history-list"></ul>
+      </div>
     </section>
   </div>
+
+  <p class="reserve-toast" id="reserve-toast" role="status" aria-live="polite"></p>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="remote.js"></script>
