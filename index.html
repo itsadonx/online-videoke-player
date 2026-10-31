@@ -196,6 +196,7 @@
         <p class="youtube-message hidden" id="youtube-message" role="alert"></p>
         <ul class="youtube-results hidden" id="youtube-results"></ul>
         <p class="catalog-load-status" id="drive-library-status">Loading Drive videos…</p>
+        <nav class="song-alpha" id="drive-alpha" aria-label="Jump to a letter" hidden></nav>
         <ul class="youtube-results drive-library-list" id="drive-library"></ul>
       </div>
 
@@ -322,7 +323,12 @@
 
             <div class="yt-chrome-mask" aria-hidden="true"></div>
 
-            <p class="reserved-count" id="reserved-count" aria-live="polite">R: 0</p>
+            <div class="player-status-row">
+              <p class="reserved-count" id="reserved-count" aria-live="polite">R: 0</p>
+              <p class="up-next-banner" id="up-next-banner" hidden>
+                <span id="up-next-text"></span>
+              </p>
+            </div>
 
             <button
               type="button"

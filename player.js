@@ -71,6 +71,13 @@
   /** @type {{ id: string; title: string; thumbnail?: string; source?: string }[]} */
   let driveLibraryItems = [];
   let ytProgressTimer = null;
+  let upNextTimer = null;
+  let upNextHideTimer = null;
+  let upNextSongKey = "";
+  let upNextShown = { minute: false, soon: false };
+  let driveEmbedDurationSec = 0;
+  let driveEmbedElapsedSec = 0;
+  let driveEmbedClockAt = 0;
   let driveEmbedTimer = null;
   let driveEmbedFileId = null;
   let driveEmbedPaused = false;
@@ -474,6 +481,7 @@
       progressInput.value = String(pct);
       timeCurrent.textContent = formatTime(current);
       timeDuration.textContent = formatTime(duration);
+      checkUpNext(current, duration);
       return;
     }
 
@@ -490,6 +498,100 @@
     progressInput.value = String(pct);
     timeCurrent.textContent = formatTime(current);
     timeDuration.textContent = formatTime(duration);
+    checkUpNext(current, duration);
+  }
+
+  function upNextSongIdentity() {
+    if (currentTrack?.type === "youtube" && currentTrack.videoId) return `yt:${currentTrack.videoId}`;
+    if (currentTrack?.type === "gdrive" && currentTrack.fileId) return `gd:${currentTrack.fileId}`;
+    return currentTrack?.title || playbackMode;
+  }
+
+  function hideUpNext(immediate) {
+    const banner = document.getElementById("up-next-banner");
+    clearTimeout(upNextHideTimer);
+    upNextHideTimer = null;
+    if (!banner) return;
+    if (immediate || banner.hidden) {
+      banner.classList.remove("is-fading");
+      banner.hidden = true;
+      return;
+    }
+    banner.classList.remove("is-fading");
+    void banner.offsetWidth;
+    banner.classList.add("is-fading");
+    upNextHideTimer = setTimeout(() => {
+      banner.hidden = true;
+      banner.classList.remove("is-fading");
+    }, 900);
+  }
+
+  function showUpNext(title) {
+    const banner = document.getElementById("up-next-banner");
+    const text = document.getElementById("up-next-text");
+    if (!banner || !text || !title) return;
+    text.textContent = `Up Next - ${title}`;
+    banner.hidden = false;
+    banner.classList.remove("is-fading");
+    void banner.offsetWidth;
+    clearTimeout(upNextHideTimer);
+    upNextHideTimer = setTimeout(() => hideUpNext(false), 5000);
+  }
+
+  function checkUpNext(current, duration) {
+    const nextTitle = playQueue[0]?.title || "";
+    if (!nextTitle || !duration || !Number.isFinite(current)) {
+      if (!nextTitle) hideUpNext(true);
+      return;
+    }
+    const songKey = upNextSongIdentity();
+    if (upNextSongKey !== songKey) {
+      upNextSongKey = songKey;
+      upNextShown = { minute: false, soon: false };
+    }
+    const remain = duration - current;
+    if (remain > 60) {
+      upNextShown.minute = false;
+      upNextShown.soon = false;
+      return;
+    }
+    if (remain > 30) upNextShown.soon = false;
+    if (remain <= 30 && remain > 0 && !upNextShown.soon) {
+      upNextShown.soon = true;
+      upNextShown.minute = true;
+      showUpNext(nextTitle);
+      return;
+    }
+    if (remain <= 60 && remain > 30 && !upNextShown.minute) {
+      upNextShown.minute = true;
+      showUpNext(nextTitle);
+    }
+  }
+
+  function syncDriveEmbedClock() {
+    const now = performance.now();
+    if (!driveEmbedClockAt) driveEmbedClockAt = now;
+    if (!driveEmbedPaused) driveEmbedElapsedSec += (now - driveEmbedClockAt) / 1000;
+    driveEmbedClockAt = now;
+  }
+
+  function stopUpNextWatch() {
+    if (upNextTimer) {
+      clearInterval(upNextTimer);
+      upNextTimer = null;
+    }
+  }
+
+  function startUpNextWatch() {
+    stopUpNextWatch();
+    upNextTimer = setInterval(() => {
+      if (playbackMode === "gdrive-embed") {
+        syncDriveEmbedClock();
+        if (driveEmbedDurationSec > 0) checkUpNext(driveEmbedElapsedSec, driveEmbedDurationSec);
+        return;
+      }
+      if (playbackMode === "youtube") updateProgress();
+    }, 500);
   }
 
   function updateBuffer() {
@@ -872,6 +974,10 @@
       video.load();
       playbackMode = "none";
       currentTrack = null;
+      stopUpNextWatch();
+      hideUpNext(true);
+      driveEmbedDurationSec = 0;
+      driveEmbedElapsedSec = 0;
       wrap.classList.remove("has-source", "mode-youtube", "mode-gdrive-embed", "show-center-play");
       playerFrame.classList.remove("youtube-active");
       nowPlayingTitle.textContent = "—";
@@ -1028,6 +1134,17 @@
     container.appendChild(li);
   }
 
+  function appendSongName(container, title, onPick) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "song-name-btn";
+    btn.textContent = title || "Untitled";
+    btn.addEventListener("click", onPick);
+    li.appendChild(btn);
+    container.appendChild(li);
+  }
+
   function matchDriveLibrary(query) {
     const q = String(query || "")
       .trim()
@@ -1036,14 +1153,78 @@
     return driveLibraryItems.filter((item) => String(item.title || "").toLowerCase().includes(q));
   }
 
+  const SONG_LETTERS = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")];
+  const driveAlpha = document.getElementById("drive-alpha");
+
+  function songIndexLetter(title) {
+    const match = String(title || "").trim().match(/[A-Za-z0-9]/);
+    if (!match) return "#";
+    const ch = match[0].toUpperCase();
+    return ch >= "A" && ch <= "Z" ? ch : "#";
+  }
+
+  function jumpSongList(container, letter) {
+    const heading = [...container.querySelectorAll("[data-letter]")].find((el) => el.dataset.letter === letter);
+    if (!heading) return;
+    const headings = [...container.querySelectorAll(".song-letter-heading")];
+    headings.forEach((el) => el.classList.add("song-letter-measuring"));
+    let top = 0;
+    let node = heading;
+    while (node && node !== container) {
+      top += node.offsetTop;
+      node = node.offsetParent;
+    }
+    headings.forEach((el) => el.classList.remove("song-letter-measuring"));
+    container.scrollTop = top;
+  }
+
+  function renderSongAlpha(bar, present, onJump) {
+    if (!bar) return;
+    bar.innerHTML = "";
+    bar.hidden = present.size === 0;
+    SONG_LETTERS.forEach((letter) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "song-alpha-btn";
+      btn.textContent = letter;
+      btn.disabled = !present.has(letter);
+      btn.addEventListener("click", () => {
+        bar.querySelectorAll(".song-alpha-btn").forEach((el) => el.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        onJump(letter);
+      });
+      bar.appendChild(btn);
+    });
+  }
+
   function renderDriveLibrary() {
     if (!driveLibraryEl) return;
     driveLibraryEl.innerHTML = "";
+    const groups = new Map();
     driveLibraryItems.forEach((item) => {
-      appendMediaResult(driveLibraryEl, { ...item, source: "gdrive", channel: "Google Drive" }, (entry) => {
-        void playOrQueue(gdriveTrack(entry.id, entry.title));
+      const letter = songIndexLetter(item.title);
+      if (!groups.has(letter)) groups.set(letter, []);
+      groups.get(letter).push(item);
+    });
+    SONG_LETTERS.forEach((letter) => {
+      const songs = groups.get(letter);
+      if (!songs?.length) return;
+      const heading = document.createElement("li");
+      heading.className = "song-letter-heading";
+      heading.dataset.letter = letter;
+      heading.textContent = letter;
+      driveLibraryEl.appendChild(heading);
+      songs.forEach((item) => {
+        appendSongName(driveLibraryEl, item.title, () => {
+          void playOrQueue(gdriveTrack(item.id, item.title));
+        });
       });
     });
+    const spacer = document.createElement("li");
+    spacer.className = "song-list-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    driveLibraryEl.appendChild(spacer);
+    renderSongAlpha(driveAlpha, groups, (letter) => jumpSongList(driveLibraryEl, letter));
   }
 
   function setDriveLibraryStatus(text, isError) {
@@ -1114,7 +1295,9 @@
       } catch {
         durationMs = 0;
       }
-      if (!durationMs || playbackMode !== "gdrive-embed") return;
+      if (playbackMode !== "gdrive-embed") return;
+      driveEmbedDurationSec = durationMs / 1000;
+      if (!durationMs) return;
       driveEmbedTimer = setTimeout(() => {
         driveEmbedTimer = null;
         if (playbackMode === "gdrive-embed") handlePlaybackEnded();
@@ -1128,6 +1311,10 @@
     playbackMode = "gdrive-embed";
     driveEmbedFileId = fileId;
     driveEmbedPaused = false;
+    driveEmbedDurationSec = 0;
+    driveEmbedElapsedSec = 0;
+    driveEmbedClockAt = performance.now();
+    startUpNextWatch();
     wrap.classList.add("has-source", "mode-gdrive-embed");
     wrap.classList.remove("mode-youtube", "show-center-play");
     playerFrame.classList.remove("youtube-active");
@@ -1338,6 +1525,7 @@
             autoplayTries = 4;
             setPlayingUI(true);
             startYtProgressTimer();
+            startUpNextWatch();
             wrap.classList.remove("show-center-play");
             emitLocalStateChange();
           }
@@ -1502,7 +1690,10 @@
   });
 
   video.addEventListener("play", () => {
-    if (isHtml5Mode()) setPlayingUI(true);
+    if (isHtml5Mode()) {
+      setPlayingUI(true);
+      startUpNextWatch();
+    }
   });
   video.addEventListener("pause", () => {
     if (isHtml5Mode()) setPlayingUI(false);

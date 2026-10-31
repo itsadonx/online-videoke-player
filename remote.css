@@ -369,10 +369,87 @@ body {
 }
 
 .remote-song-list {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  gap: 0.4rem;
   align-items: stretch;
+}
+
+.remote-song-list .song-name-btn {
+  display: block;
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.3;
+  background: var(--panel);
+}
+
+.song-letter-heading.song-letter-measuring {
+  position: static;
+}
+
+.remote-song-list .song-list-spacer {
+  grid-column: 1 / -1;
+  height: 65vh;
+  pointer-events: none;
+}
+
+.song-alpha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin: 0 0 0.55rem;
+}
+
+.song-alpha[hidden] {
+  display: none;
+}
+
+.song-alpha-btn {
+  min-width: 1.65rem;
+  height: 1.65rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--elevated);
+}
+
+.song-alpha-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.song-alpha-btn.is-active {
+  color: #fff;
+  border-color: transparent;
+  background: var(--accent);
+}
+
+.remote-song-list .song-letter-heading {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0.35rem 0.1rem 0.1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent-soft);
+  background: var(--bg);
 }
 
 .remote-song-list > li {

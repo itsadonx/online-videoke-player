@@ -24,6 +24,8 @@
   const searchHint = document.getElementById("search-hint");
   const searchMessage = document.getElementById("search-message");
   const songList = document.getElementById("song-list");
+  const songAlpha = document.getElementById("song-alpha");
+  const SONG_LETTERS = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")];
   const songEmpty = document.getElementById("song-empty");
   const queueList = document.getElementById("queue-list");
   const queueEmpty = document.getElementById("queue-empty");
@@ -138,7 +140,7 @@
         songEmpty.textContent = searchItems.length ? "" : "No results.";
         songEmpty.classList.toggle("hidden", searchItems.length > 0);
       }
-      renderResultList(songList, searchItems, playRemoteItem);
+      renderGroupedSongs(songList, searchItems, playRemoteItem);
       return;
     }
     const drive = lastPlayerState?.driveLibrary || [];
@@ -155,7 +157,79 @@
         songEmpty.classList.add("hidden");
       }
     }
-    renderResultList(songList, items, playRemoteItem);
+    renderGroupedSongs(songList, items, playRemoteItem);
+  }
+
+  function songIndexLetter(title) {
+    const match = String(title || "").trim().match(/[A-Za-z0-9]/);
+    if (!match) return "#";
+    const ch = match[0].toUpperCase();
+    return ch >= "A" && ch <= "Z" ? ch : "#";
+  }
+
+  function renderSongAlpha(present) {
+    if (!songAlpha) return;
+    songAlpha.innerHTML = "";
+    songAlpha.hidden = present.size === 0;
+    SONG_LETTERS.forEach((letter) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "song-alpha-btn";
+      btn.textContent = letter;
+      btn.disabled = !present.has(letter);
+      btn.addEventListener("click", () => {
+        songAlpha.querySelectorAll(".song-alpha-btn").forEach((el) => el.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        const heading = [...songList.querySelectorAll("[data-letter]")].find((el) => el.dataset.letter === letter);
+        if (!heading) return;
+        const headings = [...songList.querySelectorAll(".song-letter-heading")];
+        headings.forEach((el) => el.classList.add("song-letter-measuring"));
+        let top = 0;
+        let node = heading;
+        while (node && node !== songList) {
+          top += node.offsetTop;
+          node = node.offsetParent;
+        }
+        headings.forEach((el) => el.classList.remove("song-letter-measuring"));
+        songList.scrollTop = top;
+      });
+      songAlpha.appendChild(btn);
+    });
+  }
+
+  function renderGroupedSongs(container, items, onPick) {
+    if (!container) return;
+    container.innerHTML = "";
+    const groups = new Map();
+    (items || []).forEach((item) => {
+      const letter = songIndexLetter(item.title);
+      if (!groups.has(letter)) groups.set(letter, []);
+      groups.get(letter).push(item);
+    });
+    SONG_LETTERS.forEach((letter) => {
+      const songs = groups.get(letter);
+      if (!songs?.length) return;
+      const heading = document.createElement("li");
+      heading.className = "song-letter-heading";
+      heading.dataset.letter = letter;
+      heading.textContent = letter;
+      container.appendChild(heading);
+      songs.forEach((item) => {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "song-name-btn";
+        btn.textContent = item.title || "Untitled";
+        btn.addEventListener("click", () => onPick(item));
+        li.appendChild(btn);
+        container.appendChild(li);
+      });
+    });
+    const spacer = document.createElement("li");
+    spacer.className = "song-list-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    container.appendChild(spacer);
+    renderSongAlpha(groups);
   }
 
   function applyState(state) {
