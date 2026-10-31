@@ -141,6 +141,11 @@
             await ovp.playOrQueueGdrive(payload.fileId, payload.title || "Google Drive video");
           }
           break;
+        case "play-local":
+          if (payload.localId && ovp.playOrQueueLocal) {
+            await ovp.playOrQueueLocal(payload.localId);
+          }
+          break;
         case "search": {
           const query = String(payload?.query || "").trim();
           if (!query) {

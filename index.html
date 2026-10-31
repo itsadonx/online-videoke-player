@@ -35,14 +35,23 @@
   <div class="remote-welcome account-password" id="account-create-modal" role="dialog" aria-modal="true" aria-labelledby="account-create-title" hidden>
     <div class="remote-welcome-card">
       <h2 class="remote-welcome-title" id="account-create-title">Create an account</h2>
-      <p class="remote-welcome-lead">This room keeps its code, reserved songs, and the song that is playing.</p>
+      <p class="remote-welcome-lead">This room keeps its code, reserved songs, and the song that is playing. Scan the QR code to type the same form on a phone.</p>
+      <div class="account-signup-remote" id="account-signup-remote">
+        <p class="settings-label">Phone code</p>
+        <p class="remote-room-display" id="account-signup-code">…</p>
+        <div class="remote-qr-wrap hidden" id="account-signup-qr-wrap">
+          <img class="remote-qr" id="account-signup-qr" width="180" height="180" alt="QR code to type the account on a phone" />
+          <p class="settings-hint">Scan with a phone camera. Typing on either screen updates the other.</p>
+        </div>
+        <p class="settings-status" id="account-signup-status" role="status">Preparing the phone link…</p>
+      </div>
       <form class="account-create-form" id="account-create-form">
         <label class="settings-label" for="account-username">Username or nickname</label>
         <input class="settings-input" id="account-username" name="username" autocomplete="username" maxlength="32" required />
         <label class="settings-label" for="account-password">Password</label>
-        <input class="settings-input" id="account-password" name="password" type="password" autocomplete="new-password" required />
+        <input class="settings-input" id="account-password" name="password" type="password" autocomplete="new-password" maxlength="128" required />
         <label class="settings-label" for="account-password-again">Retype password</label>
-        <input class="settings-input" id="account-password-again" name="passwordAgain" type="password" autocomplete="new-password" required />
+        <input class="settings-input" id="account-password-again" name="passwordAgain" type="password" autocomplete="new-password" maxlength="128" required />
         <button type="submit" class="settings-save-btn" id="btn-create-account">Create</button>
       </form>
       <button type="button" class="settings-save-btn account-back-btn" id="btn-create-back">Back</button>
@@ -195,6 +204,9 @@
         </p>
         <p class="youtube-message hidden" id="youtube-message" role="alert"></p>
         <ul class="youtube-results hidden" id="youtube-results"></ul>
+        <button type="button" class="local-folder-btn" id="btn-local-folder">Local songs</button>
+        <input id="local-folder-input" type="file" accept="video/*" webkitdirectory directory multiple hidden />
+        <p class="settings-hint local-folder-hint">Pick a folder on this computer. Videos inside its subfolders are added to the song list.</p>
         <p class="catalog-load-status" id="drive-library-status">Loading Drive videos…</p>
         <nav class="song-alpha" id="drive-alpha" aria-label="Jump to a letter" hidden></nav>
         <ul class="youtube-results drive-library-list" id="drive-library"></ul>

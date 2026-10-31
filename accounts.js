@@ -12,9 +12,22 @@
   const passwordInput = document.getElementById("account-enter-password");
   const notice = document.getElementById("account-notice");
   const btnBack = document.getElementById("btn-account-back");
+  const signupCodeEl = document.getElementById("account-signup-code");
+  const signupQrWrap = document.getElementById("account-signup-qr-wrap");
+  const signupQrEl = document.getElementById("account-signup-qr");
+  const signupStatusEl = document.getElementById("account-signup-status");
+  const signupInputs = {
+    username: document.getElementById("account-username"),
+    password: document.getElementById("account-password"),
+    passwordAgain: document.getElementById("account-password-again"),
+  };
 
   let noticeTimer = null;
   let pendingUsername = "";
+  let signupSocket = null;
+  let signupApplying = false;
+  let creating = false;
+  let ioWaiters = [];
 
   function notify(message) {
     if (!notice) return;
@@ -24,15 +37,136 @@
     noticeTimer = setTimeout(() => notice.classList.remove("is-visible"), 3200);
   }
 
+  function setSignupStatus(text, ok) {
+    if (!signupStatusEl) return;
+    signupStatusEl.textContent = text;
+    signupStatusEl.className = "settings-status" + (ok ? " ok" : "");
+  }
+
+  function renderSignupCode(code) {
+    if (signupCodeEl) signupCodeEl.textContent = code || "…";
+    const url = code ? `${location.origin}/signup?code=${encodeURIComponent(code)}` : "";
+    if (code && signupQrEl && signupQrWrap) {
+      signupQrEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(url)}`;
+      signupQrWrap.classList.remove("hidden");
+    } else if (signupQrWrap) {
+      signupQrWrap.classList.add("hidden");
+    }
+  }
+
+  function applySignupPatch(patch) {
+    if (!patch || typeof patch !== "object") return;
+    signupApplying = true;
+    Object.keys(signupInputs).forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(patch, key)) return;
+      const input = signupInputs[key];
+      if (input && input.value !== patch[key]) input.value = patch[key];
+    });
+    signupApplying = false;
+  }
+
+  function emitSignupPatch(key) {
+    if (signupApplying || !signupSocket?.connected) return;
+    signupSocket.emit("signup:update", { [key]: signupInputs[key]?.value || "" });
+  }
+
+  function publishSignupResult(ok, error) {
+    if (!signupSocket?.connected) return;
+    signupSocket.emit("signup:result", { ok, error: error || "" });
+  }
+
+  function whenIo(done) {
+    if (typeof io !== "undefined") {
+      done();
+      return;
+    }
+    ioWaiters.push(done);
+    if (ioWaiters.length > 1) return;
+    const finish = () => {
+      if (typeof io === "undefined") return;
+      const waiting = ioWaiters.splice(0);
+      waiting.forEach((fn) => fn());
+    };
+    const existing = document.querySelector('script[src="/socket.io/socket.io.js"]');
+    if (!existing) {
+      const script = document.createElement("script");
+      script.src = "/socket.io/socket.io.js";
+      script.async = true;
+      script.onload = finish;
+      script.onerror = () => setSignupStatus("Open this player from the server address to use a phone.", false);
+      document.head.appendChild(script);
+    }
+    const timer = setInterval(() => {
+      if (typeof io === "undefined") return;
+      clearInterval(timer);
+      finish();
+    }, 50);
+  }
+
+  function bindSignupSocket() {
+    if (signupSocket || typeof io === "undefined") return;
+    signupSocket = io({ transports: ["websocket", "polling"] });
+    signupSocket.on("connect", () => {
+      if (createModal && !createModal.hidden) openSignupRemote();
+    });
+    signupSocket.on("signup:draft", applySignupPatch);
+    signupSocket.on("signup:phones", ({ count }) => {
+      const phones = Number(count) || 0;
+      setSignupStatus(
+        phones ? "Phone connected. Typing stays in sync." : "Scan the QR code with a phone.",
+        phones > 0
+      );
+    });
+    signupSocket.on("signup:submit", () => {
+      createAccount();
+    });
+    signupSocket.on("connect_error", () => {
+      setSignupStatus("Phone link unavailable. Start the server, then reopen this page.", false);
+    });
+  }
+
+  function openSignupRemote() {
+    if (location.protocol !== "http:" && location.protocol !== "https:") {
+      setSignupStatus("Open this player from the server address to use a phone.", false);
+      return;
+    }
+    whenIo(() => {
+      bindSignupSocket();
+      if (!signupSocket?.connected) {
+        setSignupStatus("Connecting the phone link…", false);
+        return;
+      }
+      signupSocket.emit("signup:host-open", {}, (res) => {
+        if (!createModal || createModal.hidden) {
+          signupSocket.emit("signup:host-close");
+          return;
+        }
+        if (!res?.ok || !res.code) {
+          setSignupStatus("Could not open the phone link.", false);
+          return;
+        }
+        renderSignupCode(res.code);
+        setSignupStatus("Scan the QR code with a phone.", false);
+      });
+    });
+  }
+
+  function closeSignupRemote() {
+    renderSignupCode("");
+    if (signupSocket?.connected) signupSocket.emit("signup:host-close");
+  }
+
   function showCreateModal() {
     hidePasswordModal();
     if (createForm) createForm.reset();
     if (createModal) createModal.hidden = false;
-    document.getElementById("account-username")?.focus();
+    openSignupRemote();
+    signupInputs.username?.focus();
   }
 
   function hideCreateModal() {
     if (createModal) createModal.hidden = true;
+    closeSignupRemote();
   }
 
   function showPasswordModal(username) {
@@ -117,26 +251,44 @@
     });
   }
 
-  createForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const username = document.getElementById("account-username")?.value || "";
-    const password = document.getElementById("account-password")?.value || "";
-    const again = document.getElementById("account-password-again")?.value || "";
+  async function createAccount() {
+    if (creating) return;
+    const username = signupInputs.username?.value || "";
+    const password = signupInputs.password?.value || "";
+    const again = signupInputs.passwordAgain?.value || "";
     if (password !== again) {
       notify("Passwords do not match.");
+      publishSignupResult(false, "Passwords do not match.");
       return;
     }
-    const res = await fetch("/api/accounts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      notify(data.error || "Could not create the account.");
-      return;
+    creating = true;
+    try {
+      const res = await fetch("/api/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = data.error || "Could not create the account.";
+        notify(error);
+        publishSignupResult(false, error);
+        return;
+      }
+      publishSignupResult(true, "");
+      await openSession(data);
+    } finally {
+      creating = false;
     }
-    await openSession(data);
+  }
+
+  Object.keys(signupInputs).forEach((key) => {
+    signupInputs[key]?.addEventListener("input", () => emitSignupPatch(key));
+  });
+
+  createForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    createAccount();
   });
 
   passwordForm?.addEventListener("submit", async (event) => {

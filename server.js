@@ -16,6 +16,8 @@ const io = new Server(server, {
 
 /** @type {Map<string, { hostId: string | null; remotes: Set<string>; leaveTimer: NodeJS.Timeout | null }>} */
 const rooms = new Map();
+/** @type {Map<string, { hostId: string | null; phones: Set<string>; fields: { username: string; password: string; passwordAgain: string } }>} */
+const signupSessions = new Map();
 const accountsFile = path.join(__dirname, "data", "accounts.json");
 
 function loadAccounts() {
@@ -85,6 +87,37 @@ function normalizeRoomId(id) {
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
+}
+
+function emptySignupFields() {
+  return { username: "", password: "", passwordAgain: "" };
+}
+
+function cleanSignupPatch(input) {
+  const patch = {};
+  if (input && Object.prototype.hasOwnProperty.call(input, "username")) {
+    patch.username = String(input.username || "").slice(0, 32);
+  }
+  if (input && Object.prototype.hasOwnProperty.call(input, "password")) {
+    patch.password = String(input.password || "").slice(0, 128);
+  }
+  if (input && Object.prototype.hasOwnProperty.call(input, "passwordAgain")) {
+    patch.passwordAgain = String(input.passwordAgain || "").slice(0, 128);
+  }
+  return patch;
+}
+
+function freshSignupCode() {
+  let code = generateRoomCode();
+  while (signupSessions.has(code)) code = generateRoomCode();
+  return code;
+}
+
+function closeSignupSession(code, notify) {
+  const session = signupSessions.get(code);
+  if (!session) return;
+  if (notify) io.to(`signup:${code}`).emit("signup:closed");
+  signupSessions.delete(code);
 }
 
 function getRoom(roomId) {
@@ -256,6 +289,10 @@ app.get("/remote", (_req, res) => {
   res.sendFile(path.join(__dirname, "remote.html"));
 });
 
+app.get("/signup", (_req, res) => {
+  res.sendFile(path.join(__dirname, "signup.html"));
+});
+
 io.on("connection", (socket) => {
   socket.on("host:register", (payload, ack) => {
     if (typeof payload === "function") {
@@ -337,7 +374,105 @@ io.on("connection", (socket) => {
     io.to(socket.data.roomId).emit("player:search-results", payload || { items: [] });
   });
 
+  socket.on("signup:host-open", (_payload, ack) => {
+    const previous = socket.data.signupCode;
+    if (previous && signupSessions.get(previous)?.hostId === socket.id) {
+      socket.leave(`signup:${previous}`);
+      closeSignupSession(previous, true);
+    }
+    const code = freshSignupCode();
+    signupSessions.set(code, {
+      hostId: socket.id,
+      phones: new Set(),
+      fields: emptySignupFields(),
+    });
+    socket.data.signupCode = code;
+    socket.data.signupRole = "host";
+    socket.join(`signup:${code}`);
+    if (typeof ack === "function") ack({ ok: true, code });
+  });
+
+  socket.on("signup:host-close", () => {
+    const code = socket.data.signupCode;
+    const session = code && signupSessions.get(code);
+    if (!session || session.hostId !== socket.id) return;
+    socket.leave(`signup:${code}`);
+    socket.data.signupCode = null;
+    closeSignupSession(code, true);
+  });
+
+  socket.on("signup:join", ({ code } = {}, ack) => {
+    const id = normalizeRoomId(code);
+    const session = signupSessions.get(id);
+    if (!session || !session.hostId) {
+      if (typeof ack === "function") {
+        ack({ ok: false, error: "Create account is not open on the player. Scan the QR code again." });
+      }
+      return;
+    }
+    if (socket.data.signupCode && socket.data.signupCode !== id) {
+      const previous = signupSessions.get(socket.data.signupCode);
+      previous?.phones.delete(socket.id);
+      socket.leave(`signup:${socket.data.signupCode}`);
+    }
+    socket.data.signupCode = id;
+    socket.data.signupRole = "phone";
+    socket.join(`signup:${id}`);
+    session.phones.add(socket.id);
+    io.to(session.hostId).emit("signup:phones", { count: session.phones.size });
+    if (typeof ack === "function") ack({ ok: true, code: id, fields: { ...session.fields } });
+  });
+
+  socket.on("signup:update", (patch) => {
+    const code = socket.data.signupCode;
+    const session = code && signupSessions.get(code);
+    if (!session) return;
+    const role = socket.data.signupRole;
+    if (role === "host" && session.hostId !== socket.id) return;
+    if (role === "phone" && !session.phones.has(socket.id)) return;
+    if (role !== "host" && role !== "phone") return;
+    const clean = cleanSignupPatch(patch);
+    if (!Object.keys(clean).length) return;
+    Object.assign(session.fields, clean);
+    socket.to(`signup:${code}`).emit("signup:draft", clean);
+  });
+
+  socket.on("signup:submit", () => {
+    const code = socket.data.signupCode;
+    const session = code && signupSessions.get(code);
+    if (!session || socket.data.signupRole !== "phone" || !session.phones.has(socket.id)) return;
+    if (!session.hostId) return;
+    io.to(session.hostId).emit("signup:submit");
+  });
+
+  socket.on("signup:result", (payload) => {
+    const code = socket.data.signupCode;
+    const session = code && signupSessions.get(code);
+    if (!session || session.hostId !== socket.id) return;
+    const result = {
+      ok: Boolean(payload?.ok),
+      error: String(payload?.error || "").slice(0, 180),
+    };
+    socket.to(`signup:${code}`).emit("signup:result", result);
+    if (result.ok) {
+      socket.leave(`signup:${code}`);
+      socket.data.signupCode = null;
+      signupSessions.delete(code);
+    }
+  });
+
   socket.on("disconnect", () => {
+    const signupCode = socket.data.signupCode;
+    const signupSession = signupCode && signupSessions.get(signupCode);
+    if (signupSession && socket.data.signupRole === "host" && signupSession.hostId === socket.id) {
+      closeSignupSession(signupCode, true);
+    } else if (signupSession && socket.data.signupRole === "phone") {
+      signupSession.phones.delete(socket.id);
+      if (signupSession.hostId) {
+        io.to(signupSession.hostId).emit("signup:phones", { count: signupSession.phones.size });
+      }
+    }
+
     const { role, roomId } = socket.data;
     if (!roomId) return;
 
@@ -367,4 +502,5 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`OVP running at http://localhost:${PORT}`);
   console.log(`Phone remote:  http://localhost:${PORT}/remote`);
+  console.log(`Account signup remote: http://localhost:${PORT}/signup`);
 });

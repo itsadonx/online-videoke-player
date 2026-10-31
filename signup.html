@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="theme-color" content="#0a0612" />
+  <title>OVP Create Account</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="remote.css" />
+</head>
+<body>
+  <div class="remote-app">
+    <header class="remote-header">
+      <p class="remote-brand">OVP Account</p>
+      <p class="remote-status" id="conn-status">Connecting…</p>
+    </header>
+
+    <section class="remote-join" id="screen-join">
+      <h1>Create an account</h1>
+      <p class="remote-lead">Enter the code shown on the player, or scan the QR code on the create account screen.</p>
+      <input
+        type="text"
+        class="remote-room-input"
+        id="code-input"
+        inputmode="text"
+        autocapitalize="characters"
+        autocomplete="off"
+        maxlength="6"
+        placeholder="Phone code"
+      />
+      <button type="button" class="remote-btn remote-btn-primary" id="btn-join">Connect</button>
+      <p class="remote-error hidden" id="join-error" role="alert"></p>
+    </section>
+
+    <section class="remote-join hidden" id="screen-form" hidden>
+      <h1>Create an account</h1>
+      <p class="remote-lead">This is the same form as the player. Typing here updates the player, and typing there updates this phone.</p>
+      <form class="signup-form" id="signup-form">
+        <label class="signup-label" for="signup-username">Username or nickname</label>
+        <input class="signup-input" id="signup-username" name="username" autocomplete="username" maxlength="32" required />
+        <label class="signup-label" for="signup-password">Password</label>
+        <input class="signup-input" id="signup-password" name="password" type="password" autocomplete="new-password" maxlength="128" required />
+        <label class="signup-label" for="signup-password-again">Retype password</label>
+        <input class="signup-input" id="signup-password-again" name="passwordAgain" type="password" autocomplete="new-password" maxlength="128" required />
+        <button type="submit" class="remote-btn remote-btn-primary" id="btn-create">Create</button>
+      </form>
+      <p class="remote-error hidden" id="form-error" role="alert"></p>
+      <p class="signup-done hidden" id="form-done">Account created on the player. You can close this page.</p>
+    </section>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="signup.js"></script>
+</body>
+</html>

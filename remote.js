@@ -125,30 +125,40 @@
   }
 
   function filterDriveLibrary(query) {
-    const drive = lastPlayerState?.driveLibrary || [];
+    const drive = (lastPlayerState?.driveLibrary || []).map(toDriveRow);
+    const local = (lastPlayerState?.localLibrary || []).map((item) => ({
+      id: item.id,
+      title: item.title,
+      source: "local",
+      channel: "Local",
+    }));
     const q = String(query || "").trim().toLowerCase();
-    const matched = !q
-      ? drive
-      : drive.filter((item) => String(item.title || "").toLowerCase().includes(q));
-    return matched.map(toDriveRow);
+    const all = [...drive, ...local];
+    return !q ? all : all.filter((item) => String(item.title || "").toLowerCase().includes(q));
   }
 
   function renderSongList() {
     if (!songList) return;
     if (songMode === "search" && searchItems) {
+      const q = String(searchQuery?.value || "").trim().toLowerCase();
+      const localHits = (lastPlayerState?.localLibrary || [])
+        .filter((item) => !q || String(item.title || "").toLowerCase().includes(q))
+        .map((item) => ({ id: item.id, title: item.title, source: "local", channel: "Local" }));
+      const items = [...localHits, ...searchItems];
       if (songEmpty) {
-        songEmpty.textContent = searchItems.length ? "" : "No results.";
-        songEmpty.classList.toggle("hidden", searchItems.length > 0);
+        songEmpty.textContent = items.length ? "" : "No results.";
+        songEmpty.classList.toggle("hidden", items.length > 0);
       }
-      renderGroupedSongs(songList, searchItems, playRemoteItem);
+      renderGroupedSongs(songList, items, playRemoteItem);
       return;
     }
     const drive = lastPlayerState?.driveLibrary || [];
+    const local = lastPlayerState?.localLibrary || [];
     const query = searchQuery?.value || "";
     const items = filterDriveLibrary(query);
     if (songEmpty) {
-      if (!drive.length) {
-        songEmpty.textContent = "No Google Drive folder on the player yet.";
+      if (!drive.length && !local.length) {
+        songEmpty.textContent = "No Google Drive folder or local songs on the player yet.";
         songEmpty.classList.remove("hidden");
       } else if (!items.length) {
         songEmpty.textContent = "No Drive songs match.";
@@ -219,7 +229,16 @@
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "song-name-btn";
-        btn.textContent = item.title || "Untitled";
+        const text = document.createElement("span");
+        text.className = "song-name-text";
+        text.textContent = item.title || "Untitled";
+        btn.appendChild(text);
+        if (item.source === "local" || item.type === "file") {
+          const badge = document.createElement("span");
+          badge.className = "source-badge source-badge-local";
+          badge.textContent = "Local";
+          btn.appendChild(badge);
+        }
         btn.addEventListener("click", () => onPick(item));
         li.appendChild(btn);
         container.appendChild(li);
@@ -325,6 +344,10 @@
   }
 
   function playRemoteItem(item) {
+    if (item.source === "local" || item.type === "file") {
+      send("play-local", { localId: item.localId || item.id, title: item.title });
+      return;
+    }
     if (item.source === "gdrive" || item.type === "gdrive") {
       send("play-gdrive", { fileId: item.fileId || item.id, title: item.title });
       return;

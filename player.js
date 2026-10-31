@@ -70,6 +70,10 @@
   let playbackMode = "none"; // none | file | youtube | gdrive | gdrive-embed
   /** @type {{ id: string; title: string; thumbnail?: string; source?: string }[]} */
   let driveLibraryItems = [];
+  let localLibraryItems = [];
+  const localFiles = new Map();
+  let savedLocalHandle = null;
+  const LOCAL_VIDEO_EXT = /\.(mp4|m4v|webm|mkv|mov|avi|mpeg|mpg|wmv)$/i;
   let ytProgressTimer = null;
   let upNextTimer = null;
   let upNextHideTimer = null;
@@ -697,12 +701,22 @@
     return playbackMode === "file" || playbackMode === "gdrive";
   }
 
-  function fileTrack(file) {
+  function fileTrack(file, localId) {
     return {
       type: "file",
       file,
-      title: file.name.replace(/\.[^.]+$/, ""),
+      localId: localId || "",
+      title: titleFromFileName(file?.name),
     };
+  }
+
+  function titleFromFileName(name) {
+    return String(name || "Local video").replace(/\.[^.]+$/, "");
+  }
+
+  function isLocalVideo(file) {
+    const name = file?.name || "";
+    return LOCAL_VIDEO_EXT.test(name) || String(file?.type || "").startsWith("video/");
   }
 
   function historyKey(entry) {
@@ -1134,12 +1148,21 @@
     container.appendChild(li);
   }
 
-  function appendSongName(container, title, onPick) {
+  function appendSongName(container, title, onPick, label) {
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "song-name-btn";
-    btn.textContent = title || "Untitled";
+    const text = document.createElement("span");
+    text.className = "song-name-text";
+    text.textContent = title || "Untitled";
+    btn.appendChild(text);
+    if (label) {
+      const badge = document.createElement("span");
+      badge.className = "source-badge source-badge-local";
+      badge.textContent = label;
+      btn.appendChild(badge);
+    }
     btn.addEventListener("click", onPick);
     li.appendChild(btn);
     container.appendChild(li);
@@ -1201,7 +1224,7 @@
     if (!driveLibraryEl) return;
     driveLibraryEl.innerHTML = "";
     const groups = new Map();
-    driveLibraryItems.forEach((item) => {
+    [...driveLibraryItems.map((item) => ({ ...item, source: "gdrive" })), ...localLibraryItems].forEach((item) => {
       const letter = songIndexLetter(item.title);
       if (!groups.has(letter)) groups.set(letter, []);
       groups.get(letter).push(item);
@@ -1214,10 +1237,17 @@
       heading.dataset.letter = letter;
       heading.textContent = letter;
       driveLibraryEl.appendChild(heading);
+      songs.sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" }));
       songs.forEach((item) => {
+        const local = item.source === "local";
         appendSongName(driveLibraryEl, item.title, () => {
+          if (local) {
+            const file = localFiles.get(item.id);
+            if (file) void playOrQueue(fileTrack(file, item.id));
+            return;
+          }
           void playOrQueue(gdriveTrack(item.id, item.title));
-        });
+        }, local ? "Local" : "");
       });
     });
     const spacer = document.createElement("li");
@@ -1225,6 +1255,119 @@
     spacer.setAttribute("aria-hidden", "true");
     driveLibraryEl.appendChild(spacer);
     renderSongAlpha(driveAlpha, groups, (letter) => jumpSongList(driveLibraryEl, letter));
+  }
+
+  function rememberLocalSongs(found) {
+    localFiles.clear();
+    const sorted = found
+      .filter((item) => item?.file && isLocalVideo(item.file))
+      .sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: "base" }));
+    localLibraryItems = sorted.map((item, index) => {
+      const id = `local-${index}`;
+      localFiles.set(id, item.file);
+      return { id, title: item.title || titleFromFileName(item.file.name), source: "local" };
+    });
+    renderDriveLibrary();
+    setDriveLibraryStatus(
+      localLibraryItems.length
+        ? `${localLibraryItems.length} local videos added. They are labeled Local in the song list.`
+        : "That folder has no video files."
+    );
+    emitLocalStateChange();
+  }
+
+  async function walkLocalDirectory(dirHandle, prefix, found) {
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === "directory") {
+        await walkLocalDirectory(entry, `${prefix}${entry.name}/`, found);
+      } else if (entry.kind === "file" && LOCAL_VIDEO_EXT.test(entry.name)) {
+        const file = await entry.getFile();
+        found.push({ file, title: titleFromFileName(entry.name) });
+      }
+    }
+  }
+
+  async function scanDirectoryHandle(dirHandle) {
+    setDriveLibraryStatus("Scanning local folder…");
+    const found = [];
+    await walkLocalDirectory(dirHandle, "", found);
+    rememberLocalSongs(found);
+  }
+
+  function openLocalDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("ovp-local-songs", 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("handles");
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function saveLocalHandle(handle) {
+    const db = await openLocalDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("handles", "readwrite");
+      tx.objectStore("handles").put(handle, "folder");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }
+
+  async function readSavedLocalHandle() {
+    const db = await openLocalDb();
+    const handle = await new Promise((resolve, reject) => {
+      const tx = db.transaction("handles", "readonly");
+      const request = tx.objectStore("handles").get("folder");
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return handle;
+  }
+
+  async function chooseLocalFolder() {
+    try {
+      if (savedLocalHandle?.requestPermission) {
+        const perm = await savedLocalHandle.requestPermission({ mode: "read" });
+        if (perm === "granted") {
+          await scanDirectoryHandle(savedLocalHandle);
+          return;
+        }
+      }
+      if (window.showDirectoryPicker) {
+        const handle = await window.showDirectoryPicker({ mode: "read" });
+        savedLocalHandle = handle;
+        await saveLocalHandle(handle);
+        await scanDirectoryHandle(handle);
+        return;
+      }
+      document.getElementById("local-folder-input")?.click();
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      setDriveLibraryStatus(err.message || "Could not open that folder.", true);
+    }
+  }
+
+  async function restoreLocalFolder() {
+    try {
+      const handle = await readSavedLocalHandle();
+      if (!handle?.queryPermission) return;
+      savedLocalHandle = handle;
+      if ((await handle.queryPermission({ mode: "read" })) === "granted") {
+        await scanDirectoryHandle(handle);
+      }
+    } catch {
+      /* the folder can be chosen again */
+    }
+  }
+
+  function playOrQueueLocal(localId) {
+    const file = localFiles.get(localId);
+    if (!file) return Promise.resolve();
+    return playOrQueue(fileTrack(file, localId));
   }
 
   function setDriveLibraryStatus(text, isError) {
@@ -1238,7 +1381,11 @@
     if (!folders.length) {
       driveLibraryItems = [];
       renderDriveLibrary();
-      setDriveLibraryStatus("No Drive folder saved yet. Add one in Config.");
+      setDriveLibraryStatus(
+        localLibraryItems.length
+          ? `${localLibraryItems.length} local videos in the song list.`
+          : "No Drive folder saved yet. Add one in Config, or pick a local folder."
+      );
       return;
     }
     if (!hasActiveApiKey()) {
@@ -1270,10 +1417,13 @@
       renderDriveLibrary();
       const folderLabel = folders.length === 1 ? "Drive folder" : `${folders.length} Drive folders`;
       const note = errors.length ? ` ${errors.length} folder could not be loaded.` : "";
+      const localNote = localLibraryItems.length ? ` ${localLibraryItems.length} local videos are included.` : "";
       setDriveLibraryStatus(
         driveLibraryItems.length
-          ? `${driveLibraryItems.length} videos in your ${folderLabel} — tap to play or queue.${note}`
-          : "Folders opened, but no video files were found. Upload MP4s and share them as Anyone with the link."
+          ? `${driveLibraryItems.length} videos in your ${folderLabel} — tap to play or queue.${note}${localNote}`
+          : localLibraryItems.length
+            ? `${localLibraryItems.length} local videos in the song list.`
+            : "Folders opened, but no video files were found. Upload MP4s and share them as Anyone with the link."
       );
       emitLocalStateChange();
     } catch (err) {
@@ -1818,6 +1968,15 @@
 
   fillDriveFolderInput();
   void refreshDriveLibrary();
+  document.getElementById("btn-local-folder")?.addEventListener("click", () => {
+    void chooseLocalFolder();
+  });
+  document.getElementById("local-folder-input")?.addEventListener("change", (event) => {
+    const files = [...(event.target.files || [])];
+    rememberLocalSongs(files.map((file) => ({ file, title: titleFromFileName(file.name) })));
+    event.target.value = "";
+  });
+  void restoreLocalFolder();
 
   function clearQueue() {
     playQueue = [];
@@ -2069,7 +2228,9 @@
       reserveNotice: lastReserveNotice,
       apiKeys: getApiKeySummary(),
       volume: parseFloat(volumeInput.value),
-      queue: playQueue.map((item) => trackFromSaved(item)).filter(Boolean),
+      queue: playQueue
+        .map((item) => trackFromSaved(item) || (item?.type === "file" ? { type: "file", title: item.title, localId: item.localId || "" } : null))
+        .filter(Boolean),
       history: loadPlayHistory()
         .filter((e) => (e.type === "youtube" && e.videoId) || (e.type === "gdrive" && e.fileId))
         .slice(0, 40)
@@ -2081,6 +2242,7 @@
           playedAt: e.playedAt,
         })),
       driveLibrary: driveLibraryItems,
+      localLibrary: localLibraryItems,
     };
   }
 
@@ -2199,6 +2361,7 @@
     setVolumeLevel,
     playOrQueueYoutube: (videoId, title) => playOrQueue(youtubeTrack(videoId, title)),
     playOrQueueGdrive: (fileId, title) => playOrQueue(gdriveTrack(fileId, title)),
+    playOrQueueLocal,
     clearQueue,
     removeQueueAt,
     searchYoutube,
