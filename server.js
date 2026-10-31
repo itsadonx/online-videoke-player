@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { Readable } = require("stream");
 const express = require("express");
 const http = require("http");
@@ -7,13 +8,68 @@ const { Server } = require("socket.io");
 
 const PORT = Number(process.env.PORT) || 8080;
 const app = express();
+app.use(express.json({ limit: "256kb" }));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: true, credentials: true },
 });
 
-/** @type {Map<string, { hostId: string | null; remotes: Set<string> }>} */
+/** @type {Map<string, { hostId: string | null; remotes: Set<string>; leaveTimer: NodeJS.Timeout | null }>} */
 const rooms = new Map();
+const accountsFile = path.join(__dirname, "data", "accounts.json");
+
+function loadAccounts() {
+  try {
+    const data = JSON.parse(fs.readFileSync(accountsFile, "utf8"));
+    return Array.isArray(data.accounts) ? data.accounts : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAccounts(accounts) {
+  fs.mkdirSync(path.dirname(accountsFile), { recursive: true });
+  const tmp = `${accountsFile}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ accounts }, null, 2));
+  try {
+    fs.renameSync(tmp, accountsFile);
+  } catch {
+    fs.copyFileSync(tmp, accountsFile);
+    fs.unlinkSync(tmp);
+  }
+}
+
+function usernameKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function publicName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ").slice(0, 32);
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 32).toString("hex");
+}
+
+function roomCodeTaken(code) {
+  if (rooms.has(code)) return true;
+  return loadAccounts().some((account) => account.roomId === code);
+}
+
+function savedTrack(item) {
+  if (!item || typeof item !== "object") return null;
+  const title = String(item.title || "").slice(0, 180);
+  const videoId = String(item.videoId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const fileId = String(item.fileId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  if (item.type === "youtube" && videoId) return { type: "youtube", videoId, title: title || "YouTube video" };
+  if (item.type === "gdrive" && fileId) return { type: "gdrive", fileId, title: title || "Google Drive video" };
+  return null;
+}
+
+function savedState(input) {
+  const queue = (Array.isArray(input?.queue) ? input.queue : []).map(savedTrack).filter(Boolean).slice(0, 100);
+  return { current: savedTrack(input?.current), queue };
+}
 
 function generateRoomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -103,6 +159,83 @@ app.get("/ovp-drive/:fileId", async (req, res) => {
   }
 });
 
+app.get("/api/accounts", (_req, res) => {
+  const accounts = loadAccounts()
+    .map((account) => account.username)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  res.json({ accounts });
+});
+
+app.post("/api/accounts", (req, res) => {
+  const username = publicName(req.body?.username);
+  const password = String(req.body?.password || "");
+  const key = usernameKey(username);
+  if (!key || !password) {
+    res.status(400).json({ ok: false, error: "Enter a username and password." });
+    return;
+  }
+  const accounts = loadAccounts();
+  if (accounts.some((account) => account.usernameKey === key)) {
+    res.status(409).json({ ok: false, error: "That username is already saved." });
+    return;
+  }
+  let roomId = generateRoomCode();
+  while (roomCodeTaken(roomId)) roomId = generateRoomCode();
+  const salt = crypto.randomBytes(16).toString("hex");
+  const token = crypto.randomBytes(24).toString("hex");
+  const account = {
+    username,
+    usernameKey: key,
+    salt,
+    passwordHash: hashPassword(password, salt),
+    roomId,
+    token,
+    state: { current: null, queue: [] },
+  };
+  accounts.push(account);
+  saveAccounts(accounts);
+  res.json({ ok: true, username, roomId, token, state: account.state });
+});
+
+app.post("/api/accounts/enter", (req, res) => {
+  const key = usernameKey(req.body?.username);
+  const password = String(req.body?.password || "");
+  const accounts = loadAccounts();
+  const account = accounts.find((item) => item.usernameKey === key);
+  const hash = account ? hashPassword(password, account.salt) : "";
+  if (!account || hash !== account.passwordHash) {
+    res.status(401).json({ ok: false, error: "Cannot enter the room. Password is incorrect." });
+    return;
+  }
+  account.token = crypto.randomBytes(24).toString("hex");
+  saveAccounts(accounts);
+  res.json({
+    ok: true,
+    username: account.username,
+    roomId: account.roomId,
+    token: account.token,
+    state: account.state || { current: null, queue: [] },
+  });
+});
+
+app.post("/api/accounts/state", (req, res) => {
+  const token = String(req.body?.token || "");
+  if (!token) {
+    res.status(401).json({ ok: false });
+    return;
+  }
+  const accounts = loadAccounts();
+  const account = accounts.find((item) => item.token === token);
+  if (!account) {
+    res.status(401).json({ ok: false });
+    return;
+  }
+  account.state = savedState(req.body);
+  saveAccounts(accounts);
+  res.json({ ok: true });
+});
+
 app.get("/api/bgv", (_req, res) => {
   const dir = path.join(__dirname, "BGV");
   const videoExt = new Set([".mp4", ".webm", ".mkv", ".mov", ".m4v"]);
@@ -124,11 +257,35 @@ app.get("/remote", (_req, res) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("host:register", (ack) => {
-    let roomId = generateRoomCode();
-    while (rooms.has(roomId)) roomId = generateRoomCode();
+  socket.on("host:register", (payload, ack) => {
+    if (typeof payload === "function") {
+      ack = payload;
+      payload = {};
+    }
+    let roomId = normalizeRoomId(payload?.roomId);
+    if (!roomId) {
+      roomId = generateRoomCode();
+      while (roomCodeTaken(roomId)) roomId = generateRoomCode();
+    }
 
-    rooms.set(roomId, { hostId: socket.id, remotes: new Set() });
+    let room = rooms.get(roomId);
+    if (room?.leaveTimer) {
+      clearTimeout(room.leaveTimer);
+      room.leaveTimer = null;
+    }
+    if (room?.hostId && room.hostId !== socket.id) {
+      const previous = io.sockets.sockets.get(room.hostId);
+      if (previous) {
+        previous.data.role = null;
+        previous.data.roomId = null;
+        previous.leave(roomId);
+      }
+    }
+    if (!room) {
+      room = { hostId: null, remotes: new Set(), leaveTimer: null };
+      rooms.set(roomId, room);
+    }
+    room.hostId = socket.id;
     socket.data.role = "host";
     socket.data.roomId = roomId;
     socket.join(roomId);
@@ -185,8 +342,14 @@ io.on("connection", (socket) => {
     if (!roomId) return;
 
     if (role === "host") {
-      io.to(roomId).emit("player:host-gone");
-      rooms.delete(roomId);
+      const room = rooms.get(roomId);
+      if (!room || room.hostId !== socket.id) return;
+      room.hostId = null;
+      room.leaveTimer = setTimeout(() => {
+        room.leaveTimer = null;
+        if (room.hostId) return;
+        io.to(roomId).emit("player:host-gone");
+      }, 60000);
       return;
     }
 

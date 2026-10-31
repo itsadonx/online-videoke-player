@@ -13,6 +13,12 @@
     welcomeEl.classList.add("hidden");
   }
 
+  function openWelcome() {
+    if (!welcomeEl) return;
+    welcomeEl.hidden = false;
+    welcomeEl.classList.remove("hidden");
+  }
+
   btnContinue?.addEventListener("click", closeWelcome);
 
   if (location.protocol !== "http:" && location.protocol !== "https:") {
@@ -32,6 +38,8 @@
   let socket = null;
   let remoteCount = 0;
   let roomId = null;
+  let sessionToken = "";
+  let saveTimer = null;
 
   function setRemoteUiStatus(text, ok) {
     const className = "settings-status" + (ok ? " ok" : "");
@@ -80,12 +88,29 @@
     }
   }
 
+  function saveAccountState(state) {
+    if (!sessionToken || window.OVP?.isRestoring?.()) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      fetch("/api/accounts/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: sessionToken,
+          current: state.current || null,
+          queue: state.queue || [],
+        }),
+      }).catch(() => {});
+    }, 400);
+  }
+
   function broadcastState() {
     if (!socket?.connected || !window.OVP?.getState) return;
     const state = window.OVP.getState();
     state.remoteCount = remoteCount;
     state.roomId = roomId;
     socket.emit("host:state", state);
+    saveAccountState(state);
   }
 
   async function handleCommand({ command, payload }) {
@@ -172,9 +197,29 @@
     broadcastState();
   }
 
-  function connectHost() {
+  function registerHost() {
+    socket.emit("host:register", { roomId }, (res) => {
+      if (!res?.ok) {
+        setRemoteUiStatus("Could not open the room.", false);
+        return;
+      }
+      roomId = res.roomId;
+      updateRemoteLinks();
+      setRemoteUiStatus("Share the room code or link with phones on the same site.", true);
+      openWelcome();
+      broadcastState();
+    });
+  }
+
+  function connectHost(savedRoomId) {
     if (typeof io === "undefined") {
       setRemoteUiStatus("Remote server unavailable. Run: npm start", false);
+      return;
+    }
+    roomId = savedRoomId || roomId;
+
+    if (socket) {
+      if (socket.connected) registerHost();
       return;
     }
 
@@ -182,16 +227,7 @@
 
     socket.on("connect", () => {
       setRemoteUiStatus("Remote server connected.", true);
-      socket.emit("host:register", (res) => {
-        if (!res?.ok) {
-          setRemoteUiStatus("Could not create a room.", false);
-          return;
-        }
-        roomId = res.roomId;
-        updateRemoteLinks();
-        setRemoteUiStatus("Share the room code or link with phones on the same site.", true);
-        broadcastState();
-      });
+      registerHost();
     });
 
     socket.on("disconnect", () => {
@@ -219,13 +255,20 @@
     script.onload = () => {
       window.addEventListener("ovp:state", broadcastState);
       setInterval(broadcastState, 4000);
-      connectHost();
+      if (window.OVPSession?.roomId) connectHost(window.OVPSession.roomId);
     };
     script.onerror = () => {
       setRemoteUiStatus("Remote server unavailable. Run: npm start", false);
     };
     document.head.appendChild(script);
   }
+
+  window.addEventListener("ovp:session", (event) => {
+    sessionToken = event.detail?.token || "";
+    const savedRoomId = event.detail?.roomId || "";
+    if (typeof io === "undefined") return;
+    connectHost(savedRoomId);
+  });
 
   loadSocketClient();
 })();

@@ -1552,6 +1552,88 @@ body.ovp-pseudo-fullscreen .settings-panel {
   transform: translateX(-50%) translateY(0);
 }
 
+.account-gate {
+  z-index: 12000;
+}
+
+.account-password {
+  z-index: 12100;
+}
+
+.account-password[hidden] {
+  display: none;
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.account-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.account-enter-btn,
+.account-back-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 0.45rem 0.8rem;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.account-create-form .settings-label {
+  margin-top: 0.7rem;
+}
+
+.account-back-btn {
+  width: 100%;
+  margin-top: 0.55rem;
+}
+
+.account-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 13000;
+  margin: 0;
+  padding: 0.7rem 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: rgba(120, 20, 40, 0.82);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.account-notice.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .fullscreen-prompt {
   position: fixed;
   left: 50%;

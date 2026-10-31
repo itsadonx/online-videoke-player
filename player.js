@@ -78,6 +78,8 @@
   let lastVolume = 85;
   /** @type {{ type: "youtube" | "file"; title: string; videoId?: string; file?: File }[]} */
   let playQueue = [];
+  let currentTrack = null;
+  let restoringSession = false;
   let suppressEndedAdvance = false;
   let lastReserveNotice = null;
   let reserveToastTimer = null;
@@ -826,12 +828,14 @@
       if (item.type === "youtube") {
         await loadYoutubeVideo(item.videoId, item.title);
         if (playbackMode === "youtube") {
+          currentTrack = { type: "youtube", videoId: item.videoId, title: item.title };
           recordPlayHistory(item);
           emitLocalStateChange();
         }
       } else if (item.type === "gdrive") {
         await loadGdriveVideo(item.fileId, item.title);
         if (playbackMode === "gdrive" || playbackMode === "gdrive-embed") {
+          currentTrack = { type: "gdrive", fileId: item.fileId, title: item.title };
           recordPlayHistory(item);
           emitLocalStateChange();
         }
@@ -867,6 +871,7 @@
       video.removeAttribute("src");
       video.load();
       playbackMode = "none";
+      currentTrack = null;
       wrap.classList.remove("has-source", "mode-youtube", "mode-gdrive-embed", "show-center-play");
       playerFrame.classList.remove("youtube-active");
       nowPlayingTitle.textContent = "—";
@@ -1839,20 +1844,41 @@
     };
   }
 
+  function trackFromSaved(item) {
+    if (!item || typeof item !== "object") return null;
+    const title = String(item.title || "").slice(0, 180);
+    const videoId = String(item.videoId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const fileId = String(item.fileId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    if (item.type === "youtube" && videoId) return youtubeTrack(videoId, title);
+    if (item.type === "gdrive" && fileId) return gdriveTrack(fileId, title);
+    return null;
+  }
+
+  async function restoreSession(saved) {
+    restoringSession = true;
+    try {
+      playQueue = (Array.isArray(saved?.queue) ? saved.queue : []).map(trackFromSaved).filter(Boolean).slice(0, 100);
+      renderQueue();
+      const current = trackFromSaved(saved?.current);
+      if (current) await playItemNow(current);
+      else showSelectSong();
+    } finally {
+      restoringSession = false;
+      emitLocalStateChange();
+    }
+  }
+
   function getPublicState() {
     return {
       nowPlaying: nowPlayingTitle.textContent,
+      current: trackFromSaved(currentTrack),
       playbackMode,
       isPlaying: getIsPlaying(),
       isFullscreen: isPlayerFullscreen(),
       reserveNotice: lastReserveNotice,
       apiKeys: getApiKeySummary(),
       volume: parseFloat(volumeInput.value),
-      queue: playQueue.map((item) => ({
-        type: item.type,
-        title: item.title,
-        videoId: item.videoId || item.fileId,
-      })),
+      queue: playQueue.map((item) => trackFromSaved(item)).filter(Boolean),
       history: loadPlayHistory()
         .filter((e) => (e.type === "youtube" && e.videoId) || (e.type === "gdrive" && e.fileId))
         .slice(0, 40)
@@ -1989,6 +2015,8 @@
     clearQuotaFlags,
     toggleFullscreen,
     getState: getPublicState,
+    restoreSession,
+    isRestoring: () => restoringSession,
   };
 
   video.addEventListener("play", emitLocalStateChange);

@@ -11,7 +11,40 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="remote-welcome" id="remote-welcome" role="dialog" aria-modal="true" aria-labelledby="remote-welcome-title">
+  <div class="remote-welcome account-gate" id="account-gate" role="dialog" aria-modal="true" aria-labelledby="account-gate-title">
+    <div class="remote-welcome-card">
+      <h2 class="remote-welcome-title" id="account-gate-title">Rooms</h2>
+      <p class="remote-welcome-lead" id="account-gate-lead">Create an account to keep this room, the reserved songs, and the song that is playing.</p>
+      <div id="account-list"></div>
+      <h3 class="settings-subheading" id="account-create-title">Create an account</h3>
+      <form class="account-create-form" id="account-create-form">
+        <label class="settings-label" for="account-username">Username or nickname</label>
+        <input class="settings-input" id="account-username" name="username" autocomplete="username" maxlength="32" required />
+        <label class="settings-label" for="account-password">Password</label>
+        <input class="settings-input" id="account-password" name="password" type="password" autocomplete="new-password" required />
+        <label class="settings-label" for="account-password-again">Retype password</label>
+        <input class="settings-input" id="account-password-again" name="passwordAgain" type="password" autocomplete="new-password" required />
+        <button type="submit" class="settings-save-btn" id="btn-create-account">Create</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="remote-welcome account-password" id="account-password-modal" role="dialog" aria-modal="true" aria-labelledby="account-password-title" hidden>
+    <div class="remote-welcome-card">
+      <h2 class="remote-welcome-title" id="account-password-title">Enter room</h2>
+      <p class="remote-welcome-lead">Type the password for <strong id="account-password-name"></strong>.</p>
+      <form id="account-enter-form">
+        <label class="settings-label" for="account-enter-password">Password</label>
+        <input class="settings-input" id="account-enter-password" type="password" autocomplete="current-password" required />
+        <button type="submit" class="settings-save-btn">Confirm</button>
+      </form>
+      <button type="button" class="settings-save-btn account-back-btn" id="btn-account-back">Back</button>
+    </div>
+  </div>
+
+  <p class="account-notice" id="account-notice" role="status" aria-live="polite"></p>
+
+  <div class="remote-welcome" id="remote-welcome" role="dialog" aria-modal="true" aria-labelledby="remote-welcome-title" hidden>
     <div class="remote-welcome-card">
       <h2 class="remote-welcome-title" id="remote-welcome-title">Connect a phone remote</h2>
       <p class="remote-welcome-lead">Scan the QR code, open the link, or enter the room code. You can also connect later in Settings → Config.</p>
@@ -370,5 +403,6 @@
   <script src="gdrive.js"></script>
   <script src="player.js"></script>
   <script src="host-sync.js"></script>
+  <script src="accounts.js"></script>
 </body>
 </html>
