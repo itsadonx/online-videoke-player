@@ -4,6 +4,7 @@ window.OVP_CONFIG = {
   youtubeApiKey: "",
   driveApiKey: "",
   gdriveFolderUrl: "",
+  gdriveFolderUrls: [],
   youtubeApiKeys: [
     { label: "Key 1", key: "" },
   ],

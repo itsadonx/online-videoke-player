@@ -196,19 +196,19 @@
         <section class="settings-section">
           <h3 class="settings-subheading">Google Drive videos</h3>
           <p class="settings-hint">
-            Upload karaoke videos to a Google Drive folder. Share the folder (and each video) as
+            Upload karaoke videos to Google Drive folders. Share each folder (and each video) as
             <strong>Anyone with the link → Viewer</strong>. Enable <strong>Google Drive API</strong> in the same
-            Google Cloud project as your YouTube API key.
+            Google Cloud project as your YouTube API key. Put one folder link per line.
           </p>
-          <label class="settings-label" for="gdrive-folder-url">Drive folder link</label>
-          <input
-            type="url"
+          <label class="settings-label" for="gdrive-folder-url">Drive folder links</label>
+          <textarea
             class="settings-input"
             id="gdrive-folder-url"
+            rows="4"
             autocomplete="off"
             placeholder="https://drive.google.com/drive/folders/..."
-          />
-          <button type="button" class="settings-save-btn" id="btn-save-gdrive-folder">Save Drive folder</button>
+          ></textarea>
+          <button type="button" class="settings-save-btn" id="btn-save-gdrive-folder">Save Drive folders</button>
           <p class="settings-status" id="gdrive-folder-status" role="status"></p>
         </section>
         <section class="settings-section">

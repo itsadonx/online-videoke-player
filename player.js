@@ -927,34 +927,65 @@
     wrap.classList.remove("mode-gdrive-embed");
   }
 
-  function defaultDriveFolder() {
-    const url = (window.OVP_CONFIG?.gdriveFolderUrl || "").trim();
-    const id = window.OVPDrive?.parseFolderId?.(url);
-    return id ? { id, url } : null;
+  function folderFromUrl(url) {
+    const raw = String(url || "").trim();
+    const id = window.OVPDrive?.parseFolderId?.(raw);
+    return id ? { id, url: raw } : null;
   }
 
-  function getSavedDriveFolder() {
+  function configuredDriveFolders() {
+    const urls = [];
+    const single = window.OVP_CONFIG?.gdriveFolderUrl;
+    const many = window.OVP_CONFIG?.gdriveFolderUrls;
+    if (single) urls.push(single);
+    if (Array.isArray(many)) urls.push(...many);
+    return urls.map(folderFromUrl).filter(Boolean);
+  }
+
+  function readStoredDriveFolders() {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_DRIVE_FOLDER) || "null");
-      if (stored?.id) return stored;
+      if (Array.isArray(stored)) return stored.filter((folder) => folder?.id);
+      if (stored?.id) return [stored];
     } catch {
       /* ignore */
     }
-    return defaultDriveFolder();
+    return [];
   }
 
-  function saveDriveFolder(folder) {
+  function getDriveFolders() {
+    const seen = new Set();
+    const folders = [];
+    [...configuredDriveFolders(), ...readStoredDriveFolders()].forEach((folder) => {
+      if (!folder?.id || seen.has(folder.id)) return;
+      seen.add(folder.id);
+      folders.push({ id: folder.id, url: folder.url || "" });
+    });
+    return folders;
+  }
+
+  function saveDriveFolders(folders) {
     try {
-      if (!folder) localStorage.removeItem(STORAGE_DRIVE_FOLDER);
-      else localStorage.setItem(STORAGE_DRIVE_FOLDER, JSON.stringify(folder));
+      if (!folders?.length) localStorage.removeItem(STORAGE_DRIVE_FOLDER);
+      else localStorage.setItem(STORAGE_DRIVE_FOLDER, JSON.stringify(folders));
     } catch {
       /* ignore */
     }
+  }
+
+  function addDriveFolder(folder) {
+    if (!folder?.id) return;
+    const folders = getDriveFolders();
+    if (!folders.some((item) => item.id === folder.id)) folders.push(folder);
+    saveDriveFolders(folders);
   }
 
   function fillDriveFolderInput() {
-    const saved = getSavedDriveFolder();
-    if (gdriveFolderUrl) gdriveFolderUrl.value = saved?.url || "";
+    if (!gdriveFolderUrl) return;
+    gdriveFolderUrl.value = getDriveFolders()
+      .map((folder) => folder.url)
+      .filter(Boolean)
+      .join("\n");
   }
 
   function mediaSourceLabel(item) {
@@ -1017,8 +1048,8 @@
   }
 
   async function refreshDriveLibrary() {
-    const saved = getSavedDriveFolder();
-    if (!saved?.id) {
+    const folders = getDriveFolders();
+    if (!folders.length) {
       driveLibraryItems = [];
       renderDriveLibrary();
       setDriveLibraryStatus("No Drive folder saved yet. Add one in Config.");
@@ -1030,14 +1061,33 @@
       setDriveLibraryStatus("Add an API key in Config, and enable Google Drive API for that key.", true);
       return;
     }
-    setDriveLibraryStatus("Loading Drive folder…");
+    setDriveLibraryStatus(folders.length > 1 ? "Loading Drive folders…" : "Loading Drive folder…");
     try {
-      driveLibraryItems = await runWithApiKeys((apiKey) => window.OVPDrive.listFolderVideos(saved.id, apiKey));
+      const loaded = [];
+      const errors = [];
+      for (const folder of folders) {
+        try {
+          const items = await runWithApiKeys((apiKey) => window.OVPDrive.listFolderVideos(folder.id, apiKey));
+          loaded.push(...items);
+        } catch (err) {
+          errors.push(err.message || "Could not load a Drive folder.");
+        }
+      }
+      if (!loaded.length && errors.length) throw new Error(errors[0]);
+      const seen = new Set();
+      driveLibraryItems = loaded.filter((item) => {
+        if (!item?.id || seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+      driveLibraryItems.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
       renderDriveLibrary();
+      const folderLabel = folders.length === 1 ? "Drive folder" : `${folders.length} Drive folders`;
+      const note = errors.length ? ` ${errors.length} folder could not be loaded.` : "";
       setDriveLibraryStatus(
         driveLibraryItems.length
-          ? `${driveLibraryItems.length} videos in your Drive folder — tap to play or queue.`
-          : "Folder opened, but no video files were found. Upload MP4s and share them as Anyone with the link."
+          ? `${driveLibraryItems.length} videos in your ${folderLabel} — tap to play or queue.${note}`
+          : "Folders opened, but no video files were found. Upload MP4s and share them as Anyone with the link."
       );
       emitLocalStateChange();
     } catch (err) {
@@ -1338,7 +1388,7 @@
 
     const driveFolderId = window.OVPDrive?.parseFolderId?.(query);
     if (driveFolderId) {
-      saveDriveFolder({ id: driveFolderId, url: query });
+      addDriveFolder({ id: driveFolderId, url: query });
       fillDriveFolderInput();
       setYoutubeMessage("Drive folder saved. Loading videos…");
       await refreshDriveLibrary();
@@ -1536,28 +1586,35 @@
   btnSaveGdriveFolder?.addEventListener("click", () => {
     const raw = (gdriveFolderUrl?.value || "").trim();
     if (!raw) {
-      saveDriveFolder(null);
-      driveLibraryItems = [];
-      renderDriveLibrary();
-      setDriveLibraryStatus("No Drive folder saved yet. Add one in Config.");
+      saveDriveFolders(null);
       if (gdriveFolderStatus) {
-        gdriveFolderStatus.textContent = "Drive folder cleared.";
+        gdriveFolderStatus.textContent = configuredDriveFolders().length
+          ? "Extra folders cleared. The config folders are still used."
+          : "Drive folders cleared.";
         gdriveFolderStatus.className = "settings-status ok";
       }
-      emitLocalStateChange();
+      void refreshDriveLibrary();
       return;
     }
-    const folderId = window.OVPDrive?.parseFolderId?.(raw);
-    if (!folderId) {
-      if (gdriveFolderStatus) {
-        gdriveFolderStatus.textContent = "Paste a Google Drive folder link (drive.google.com/drive/folders/...).";
-        gdriveFolderStatus.className = "settings-status err";
+    const lines = raw.split(/\s+/).map((line) => line.trim()).filter(Boolean);
+    const folders = [];
+    for (const line of lines) {
+      const folderId = window.OVPDrive?.parseFolderId?.(line);
+      if (!folderId) {
+        if (gdriveFolderStatus) {
+          gdriveFolderStatus.textContent = "Paste Google Drive folder links, one per line (drive.google.com/drive/folders/...).";
+          gdriveFolderStatus.className = "settings-status err";
+        }
+        return;
       }
-      return;
+      if (!folders.some((folder) => folder.id === folderId)) folders.push({ id: folderId, url: line });
     }
-    saveDriveFolder({ id: folderId, url: raw });
+    saveDriveFolders(folders);
+    fillDriveFolderInput();
     if (gdriveFolderStatus) {
-      gdriveFolderStatus.textContent = "Drive folder saved. Open Songs to browse videos.";
+      gdriveFolderStatus.textContent = folders.length === 1
+        ? "Drive folder saved. Open Songs to browse videos."
+        : `${folders.length} Drive folders saved. Open Songs to browse videos.`;
       gdriveFolderStatus.className = "settings-status ok";
     }
     void refreshDriveLibrary();
@@ -1616,13 +1673,10 @@
     if (!q) return [];
     const driveFolderId = window.OVPDrive?.parseFolderId?.(q);
     if (driveFolderId) {
-      saveDriveFolder({ id: driveFolderId, url: q });
-      const items = hasActiveApiKey()
-        ? await runWithApiKeys((apiKey) => window.OVPDrive.listFolderVideos(driveFolderId, apiKey))
-        : [];
-      driveLibraryItems = items;
-      renderDriveLibrary();
-      return items;
+      addDriveFolder({ id: driveFolderId, url: q });
+      fillDriveFolderInput();
+      await refreshDriveLibrary();
+      return driveLibraryItems.slice();
     }
     const driveFileId = window.OVPDrive?.parseFileId?.(q);
     if (driveFileId) {
