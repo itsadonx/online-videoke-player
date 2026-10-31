@@ -129,7 +129,7 @@ window.OVPDrive = (function () {
       const params = new URLSearchParams({
         q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`,
         fields: "nextPageToken,files(id,name,mimeType,shortcutDetails(targetId,targetMimeType))",
-        pageSize: "1000",
+        pageSize: "100",
         orderBy: "name",
         key: apiKey,
         supportsAllDrives: "true",
