@@ -12,11 +12,30 @@
 </head>
 <body>
   <div class="remote-welcome account-gate" id="account-gate" role="dialog" aria-modal="true" aria-labelledby="account-gate-title">
+    <div class="remote-welcome-card account-rooms-card">
+      <div class="account-rooms-top">
+        <h2 class="remote-welcome-title" id="account-gate-title">Rooms</h2>
+        <button type="button" class="account-new-btn" id="btn-show-create">No room yet?</button>
+      </div>
+      <p class="remote-welcome-lead" id="account-gate-lead">Choose a saved room, or create one.</p>
+      <div class="account-table-wrap">
+        <table class="account-table">
+          <thead>
+            <tr>
+              <th scope="col">Username</th>
+              <th scope="col">Room</th>
+            </tr>
+          </thead>
+          <tbody id="account-list"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="remote-welcome account-password" id="account-create-modal" role="dialog" aria-modal="true" aria-labelledby="account-create-title" hidden>
     <div class="remote-welcome-card">
-      <h2 class="remote-welcome-title" id="account-gate-title">Rooms</h2>
-      <p class="remote-welcome-lead" id="account-gate-lead">Create an account to keep this room, the reserved songs, and the song that is playing.</p>
-      <div id="account-list"></div>
-      <h3 class="settings-subheading" id="account-create-title">Create an account</h3>
+      <h2 class="remote-welcome-title" id="account-create-title">Create an account</h2>
+      <p class="remote-welcome-lead">This room keeps its code, reserved songs, and the song that is playing.</p>
       <form class="account-create-form" id="account-create-form">
         <label class="settings-label" for="account-username">Username or nickname</label>
         <input class="settings-input" id="account-username" name="username" autocomplete="username" maxlength="32" required />
@@ -26,6 +45,7 @@
         <input class="settings-input" id="account-password-again" name="passwordAgain" type="password" autocomplete="new-password" required />
         <button type="submit" class="settings-save-btn" id="btn-create-account">Create</button>
       </form>
+      <button type="button" class="settings-save-btn account-back-btn" id="btn-create-back">Back</button>
     </div>
   </div>
 

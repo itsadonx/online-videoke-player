@@ -2,7 +2,10 @@
   const gate = document.getElementById("account-gate");
   const listEl = document.getElementById("account-list");
   const leadEl = document.getElementById("account-gate-lead");
+  const createModal = document.getElementById("account-create-modal");
   const createForm = document.getElementById("account-create-form");
+  const btnShowCreate = document.getElementById("btn-show-create");
+  const btnCreateBack = document.getElementById("btn-create-back");
   const passwordModal = document.getElementById("account-password-modal");
   const passwordForm = document.getElementById("account-enter-form");
   const passwordName = document.getElementById("account-password-name");
@@ -19,6 +22,17 @@
     notice.classList.add("is-visible");
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => notice.classList.remove("is-visible"), 3200);
+  }
+
+  function showCreateModal() {
+    hidePasswordModal();
+    if (createForm) createForm.reset();
+    if (createModal) createModal.hidden = false;
+    document.getElementById("account-username")?.focus();
+  }
+
+  function hideCreateModal() {
+    if (createModal) createModal.hidden = true;
   }
 
   function showPasswordModal(username) {
@@ -63,36 +77,44 @@
     };
     window.dispatchEvent(new CustomEvent("ovp:session", { detail: window.OVPSession }));
     hidePasswordModal();
+    hideCreateModal();
     if (gate) gate.hidden = true;
   }
 
   function renderAccounts(names) {
     if (!listEl) return;
     listEl.innerHTML = "";
+    if (leadEl) {
+      leadEl.textContent = names.length
+        ? "Choose a saved room, or create one."
+        : "No rooms yet. Use the button above to create one.";
+    }
     if (!names.length) {
-      if (leadEl) {
-        leadEl.textContent = "Create an account to keep this room, the reserved songs, and the song that is playing.";
-      }
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 2;
+      cell.className = "account-empty";
+      cell.textContent = "No saved users yet.";
+      row.appendChild(cell);
+      listEl.appendChild(row);
       return;
     }
-    if (leadEl) leadEl.textContent = "Enter a room, or create another account below.";
-    const list = document.createElement("div");
-    list.className = "account-list";
     names.forEach((username) => {
-      const row = document.createElement("div");
-      row.className = "account-row";
-      const name = document.createElement("span");
-      name.className = "account-name";
-      name.textContent = username;
+      const row = document.createElement("tr");
+      const nameCell = document.createElement("td");
+      nameCell.className = "account-name";
+      nameCell.textContent = username;
+      const actionCell = document.createElement("td");
+      actionCell.className = "account-action";
       const button = document.createElement("button");
       button.type = "button";
       button.className = "settings-save-btn account-enter-btn";
       button.textContent = "Enter room";
       button.addEventListener("click", () => showPasswordModal(username));
-      row.append(name, button);
-      list.appendChild(row);
+      actionCell.appendChild(button);
+      row.append(nameCell, actionCell);
+      listEl.appendChild(row);
     });
-    listEl.appendChild(list);
   }
 
   createForm?.addEventListener("submit", async (event) => {
@@ -124,6 +146,8 @@
   });
 
   btnBack?.addEventListener("click", hidePasswordModal);
+  btnShowCreate?.addEventListener("click", showCreateModal);
+  btnCreateBack?.addEventListener("click", hideCreateModal);
 
   fetch("/api/accounts")
     .then((res) => res.json())
