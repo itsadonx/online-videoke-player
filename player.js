@@ -72,6 +72,9 @@
   let driveLibraryItems = [];
   let ytProgressTimer = null;
   let driveEmbedTimer = null;
+  let driveEmbedFileId = null;
+  let driveEmbedPaused = false;
+  let youtubeWantsAutoplay = false;
   let lastVolume = 85;
   /** @type {{ type: "youtube" | "file"; title: string; videoId?: string; file?: File }[]} */
   let playQueue = [];
@@ -500,14 +503,54 @@
     progressBuffer.style.width = `${(end / video.duration) * 100}%`;
   }
 
+  function youtubeIsPlaying() {
+    const yt = getYoutubePlayer();
+    try {
+      const state = yt?.getPlayerState?.();
+      return state === 1 || state === 3;
+    } catch {
+      return false;
+    }
+  }
+
+  function commandYoutube(action) {
+    const yt = getYoutubePlayer();
+    if (yt && typeof yt[action] === "function") {
+      yt[action]();
+      return;
+    }
+    const iframe = youtubeHost?.querySelector("iframe");
+    iframe?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func: action, args: [] }),
+      "*"
+    );
+  }
+
+  function toggleDriveEmbedPlayback() {
+    const iframe = gdriveHost?.querySelector("iframe");
+    if (!iframe || !driveEmbedFileId) return;
+    if (!driveEmbedPaused) {
+      clearDriveEmbedTimer();
+      iframe.src = "about:blank";
+      driveEmbedPaused = true;
+      setPlayingUI(false);
+    } else {
+      iframe.src = `${window.OVPDrive.embedUrl(driveEmbedFileId)}?usp=drivesdk&autoplay=1&mute=0`;
+      driveEmbedPaused = false;
+      setPlayingUI(true);
+      scheduleDriveEmbedAdvance(driveEmbedFileId);
+    }
+    emitLocalStateChange();
+  }
+
   async function togglePlay() {
-    if (playbackMode === "gdrive-embed") return;
+    youtubeWantsAutoplay = false;
+    if (playbackMode === "gdrive-embed") {
+      toggleDriveEmbedPlayback();
+      return;
+    }
     if (playbackMode === "youtube") {
-      const yt = getYoutubePlayer();
-      if (!yt) return;
-      const state = yt.getPlayerState();
-      if (state === window.YT.PlayerState.PLAYING) yt.pauseVideo();
-      else yt.playVideo();
+      commandYoutube(youtubeIsPlaying() ? "pauseVideo" : "playVideo");
       emitLocalStateChange();
       return;
     }
@@ -516,7 +559,13 @@
       try {
         await video.play();
       } catch {
-        /* blocked */
+        try {
+          video.muted = true;
+          await video.play();
+          video.muted = parseFloat(volumeInput.value) === 0;
+        } catch {
+          /* browser blocked playback */
+        }
       }
     } else {
       video.pause();
@@ -834,6 +883,8 @@
 
   function clearGdriveEmbed() {
     clearDriveEmbedTimer();
+    driveEmbedFileId = null;
+    driveEmbedPaused = false;
     if (!gdriveHost) return;
     gdriveHost.innerHTML = "";
     gdriveHost.hidden = true;
@@ -984,6 +1035,8 @@
     clearFileSource();
     clearYoutubeSource();
     playbackMode = "gdrive-embed";
+    driveEmbedFileId = fileId;
+    driveEmbedPaused = false;
     wrap.classList.add("has-source", "mode-gdrive-embed");
     wrap.classList.remove("mode-youtube", "show-center-play");
     playerFrame.classList.remove("youtube-active");
@@ -1150,6 +1203,7 @@
     clearYoutubeSource();
 
     playbackMode = "youtube";
+    youtubeWantsAutoplay = true;
     wrap.classList.add("has-source", "mode-youtube");
     playerFrame.classList.add("youtube-active");
     youtubeHost.hidden = false;
@@ -1184,11 +1238,12 @@
           const ended = e.data === window.YT.PlayerState.ENDED;
           const waiting =
             e.data === window.YT.PlayerState.CUED || e.data === window.YT.PlayerState.UNSTARTED;
-          if ((waiting || paused) && !ended && autoplayTries < 4) {
+          if (youtubeWantsAutoplay && waiting && autoplayTries < 4) {
             autoplayTries += 1;
             startYoutubePlayback(e.target);
           }
           if (playing) {
+            youtubeWantsAutoplay = false;
             autoplayTries = 4;
             setPlayingUI(true);
             startYtProgressTimer();
@@ -1198,7 +1253,7 @@
           if (ended) {
             handlePlaybackEnded();
           }
-          if ((paused && autoplayTries >= 4) || ended) {
+          if (paused || ended) {
             setPlayingUI(false);
             stopYtProgressTimer();
             updateProgress();
@@ -1487,7 +1542,7 @@
       return yt?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING;
     }
     if (isHtml5Mode()) return !video.paused && !video.ended;
-    if (playbackMode === "gdrive-embed") return true;
+    if (playbackMode === "gdrive-embed") return !driveEmbedPaused;
     return false;
   }
 
